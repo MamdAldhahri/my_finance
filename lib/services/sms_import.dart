@@ -108,11 +108,12 @@ class SmsImportService {
     }
   }
 
-  /// Start of the import window: messages older than one month are ignored, so
-  /// the first scan stays fast even on phones holding years of SMS.
+  /// Start of the import window: the current month plus the previous two.
+  /// Messages older than that are ignored, so scans stay fast even on phones
+  /// holding years of SMS.
   int get _cutoffMillis {
     final now = DateTime.now();
-    return DateTime(now.year, now.month - 1, now.day).millisecondsSinceEpoch;
+    return DateTime(now.year, now.month - 2, 1).millisecondsSinceEpoch;
   }
 
   static const _cols = [

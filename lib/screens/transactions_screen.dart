@@ -426,7 +426,9 @@ class _SenderPickerSheetState extends State<_SenderPickerSheet> {
   Future<void> _load() async {
     _chosen.addAll(await db.getBankSenders());
     if (!mounted) return;
-    setState(() => _senders = smsImport.inboxSenders());
+    setState(() {
+      _senders = smsImport.inboxSenders();
+    });
   }
 
   @override
