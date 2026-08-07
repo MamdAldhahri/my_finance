@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'database/database.dart';
 import 'screens/categories_screen.dart';
@@ -16,6 +17,15 @@ late final SmsImportService smsImport;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Draw behind a transparent status bar with dark icons, matching the warm
+  // light UI — so no dark strip is ever painted above the content.
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.dark,
+    statusBarBrightness: Brightness.light,
+  ));
+
   db = AppDatabase();
   smsImport = SmsImportService(db);
 
