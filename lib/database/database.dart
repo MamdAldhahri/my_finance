@@ -66,9 +66,18 @@ class Goals extends Table {
   DateTimeColumn get targetDate => dateTime().nullable()();
 }
 
-/// Money you owe. [totalAmount] is the original debt, [paidAmount] what you
-/// have already repaid. [creditor] is shown as the lender; [apr] and
-/// [minPayment] mirror the design's debt cards.
+/// Money you owe. [totalAmount] is the original debt. [paidAmount] is what was
+/// repaid BEFORE tracking started (an opening figure); everything after that
+/// is a [DebtPayments] row, so the real total paid is
+/// `paidAmount + sum(confirmed payments)`. [creditor] is shown as the lender;
+/// [apr] and [minPayment] mirror the design's debt cards.
+///
+/// A *fixed* debt ([isFixed]) is repaid by the same bank transfer every month.
+/// Its matching rule — [fixedAmount] plus the bank [matchSender], the user's
+/// own account [matchCard] and the (masked) recipient [matchCounterparty], all
+/// copied from an SMS the user picked — lets new alerts be suggested as
+/// payments automatically. Amount is the key: transfers to the same recipient
+/// with a different amount are not this debt.
 class Debts extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text().withLength(min: 1, max: 100)();
@@ -78,6 +87,35 @@ class Debts extends Table {
   RealColumn get apr => real().withDefault(const Constant(0))();
   RealColumn get minPayment => real().withDefault(const Constant(0))();
   DateTimeColumn get dueDate => dateTime().nullable()();
+
+  BoolColumn get isFixed => boolean().withDefault(const Constant(false))();
+  RealColumn get fixedAmount => real().withDefault(const Constant(0))();
+  TextColumn get matchSender => text().withDefault(const Constant(''))();
+  TextColumn get matchCard => text().withDefault(const Constant(''))();
+  TextColumn get matchCounterparty => text().withDefault(const Constant(''))();
+}
+
+/// Lifecycle of a [DebtPayments] row. Only [confirmed] counts toward the debt.
+/// [suggested] is an SMS the fixed-amount rule matched, waiting for the user;
+/// [rejected] remembers a "not this debt" answer so it is never re-suggested.
+enum PaymentStatus { confirmed, suggested, rejected }
+
+/// One repayment toward a debt: either a linked SMS transaction
+/// ([transactionId] set) or a payment the user entered by hand (null).
+class DebtPayments extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get debtId => integer()();
+  IntColumn get transactionId => integer().nullable()();
+  RealColumn get amount => real()();
+  DateTimeColumn get date => dateTime()();
+  TextColumn get note => text().withDefault(const Constant(''))();
+  IntColumn get status =>
+      intEnum<PaymentStatus>().withDefault(const Constant(0))();
+
+  @override
+  List<Set<Column>> get uniqueKeys => [
+        {debtId, transactionId},
+      ];
 }
 
 /// Simple key/value store for app settings (SMS import flags).
@@ -89,7 +127,8 @@ class Settings extends Table {
   Set<Column> get primaryKey => {key};
 }
 
-@DriftDatabase(tables: [Transactions, Categories, Goals, Debts, Settings])
+@DriftDatabase(
+    tables: [Transactions, Categories, Goals, Debts, DebtPayments, Settings])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
@@ -98,7 +137,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -115,6 +154,15 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(categories);
             await m.addColumn(debts, debts.apr);
             await m.addColumn(debts, debts.minPayment);
+          }
+          if (from < 5) {
+            // v5: debts can be linked to SMS payments.
+            await m.addColumn(debts, debts.isFixed);
+            await m.addColumn(debts, debts.fixedAmount);
+            await m.addColumn(debts, debts.matchSender);
+            await m.addColumn(debts, debts.matchCard);
+            await m.addColumn(debts, debts.matchCounterparty);
+            await m.createTable(debtPayments);
           }
         },
       );
@@ -170,8 +218,15 @@ class AppDatabase extends _$AppDatabase {
         ),
       );
 
-  Future<int> deleteTransaction(int id) =>
-      (delete(transactions)..where((t) => t.id.equals(id))).go();
+  Future<Transaction?> transactionById(int id) =>
+      (select(transactions)..where((t) => t.id.equals(id))).getSingleOrNull();
+
+  Future<int> deleteTransaction(int id) async {
+    // A deleted SMS can no longer count toward a debt.
+    await (delete(debtPayments)..where((p) => p.transactionId.equals(id)))
+        .go();
+    return (delete(transactions)..where((t) => t.id.equals(id))).go();
+  }
 
   /// Manually files a transaction under [categoryId] (null clears it).
   Future<void> setTransactionCategory(int id, int? categoryId) =>
@@ -216,8 +271,67 @@ class AppDatabase extends _$AppDatabase {
 
   Future<bool> updateDebt(Debt entry) => update(debts).replace(entry);
 
-  Future<int> deleteDebt(int id) =>
-      (delete(debts)..where((d) => d.id.equals(id))).go();
+  Future<List<Debt>> allDebts() => select(debts).get();
+
+  Future<Debt?> debtById(int id) =>
+      (select(debts)..where((d) => d.id.equals(id))).getSingleOrNull();
+
+  Future<int> deleteDebt(int id) async {
+    await (delete(debtPayments)..where((p) => p.debtId.equals(id))).go();
+    return (delete(debts)..where((d) => d.id.equals(id))).go();
+  }
+
+  // ---- Debt payments -----------------------------------------------------
+  Stream<List<DebtPayment>> watchDebtPayments() => (select(debtPayments)
+        ..orderBy([(p) => OrderingTerm.desc(p.date)]))
+      .watch();
+
+  Future<List<DebtPayment>> allDebtPayments() => select(debtPayments).get();
+
+  /// Links an SMS transaction to [debtId] with [status]. If that pair already
+  /// exists (e.g. a suggestion the user now confirms) its status is updated.
+  Future<void> linkTransactionToDebt(
+    int debtId,
+    Transaction t, {
+    PaymentStatus status = PaymentStatus.confirmed,
+  }) async {
+    final existing = await (select(debtPayments)
+          ..where((p) => p.debtId.equals(debtId) & p.transactionId.equals(t.id)))
+        .getSingleOrNull();
+    if (existing != null) {
+      await setPaymentStatus(existing.id, status);
+      return;
+    }
+    await into(debtPayments).insert(DebtPaymentsCompanion.insert(
+      debtId: debtId,
+      transactionId: Value(t.id),
+      amount: t.amount,
+      date: t.date,
+      note: Value(t.description),
+      status: Value(status),
+    ));
+  }
+
+  /// Records a payment made outside the tracked bank SMS (cash, another bank).
+  Future<int> addManualDebtPayment({
+    required int debtId,
+    required double amount,
+    required DateTime date,
+    String note = '',
+  }) =>
+      into(debtPayments).insert(DebtPaymentsCompanion.insert(
+        debtId: debtId,
+        amount: amount,
+        date: date,
+        note: Value(note),
+      ));
+
+  Future<void> setPaymentStatus(int id, PaymentStatus status) =>
+      (update(debtPayments)..where((p) => p.id.equals(id)))
+          .write(DebtPaymentsCompanion(status: Value(status)));
+
+  Future<int> deleteDebtPayment(int id) =>
+      (delete(debtPayments)..where((p) => p.id.equals(id))).go();
 
   // ---- SMS settings ------------------------------------------------------
   Stream<bool> watchSmsImportEnabled() {

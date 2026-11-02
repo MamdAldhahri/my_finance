@@ -110,6 +110,17 @@ void main() {
       expect(r.balanceAfter, 711.441); // after رصيدك الحالي
     });
 
+    test('loan installment alert is imported, not treated as an ad', () {
+      final r = parseBankSms(
+        'Your loan installment of OMR 120.500 has been debited from a/c '
+        'XXXX0017 on 01/11/2026. Avl Bal OMR 500.000.',
+      );
+      expect(r, isNotNull);
+      expect(r!.isCredit, isFalse);
+      expect(r.amount, 120.500);
+      expect(r.card, '0017');
+    });
+
     test('non-transaction message returns null', () {
       expect(parseBankSms('Your OTP is 123456. Do not share it.'), isNull);
       expect(parseBankSms('Welcome to Bank Muscat mobile banking.'), isNull);

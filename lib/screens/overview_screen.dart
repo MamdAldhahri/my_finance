@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../database/database.dart';
 import '../format.dart';
 import '../main.dart';
+import '../services/debt_matching.dart';
 import '../services/derive.dart';
 import '../theme.dart';
 import '../widgets/transaction_row.dart';
@@ -28,14 +29,20 @@ class OverviewScreen extends StatelessWidget {
               return StreamBuilder<List<Debt>>(
                 stream: db.watchDebts(),
                 builder: (context, debtSnap) {
-                  return StreamBuilder<List<Goal>>(
-                    stream: db.watchGoals(),
-                    builder: (context, goalSnap) {
-                      return _Body(
-                        txns: txns,
-                        categories: categories,
-                        debts: debtSnap.data ?? const [],
-                        goals: goalSnap.data ?? const [],
+                  return StreamBuilder<List<DebtPayment>>(
+                    stream: db.watchDebtPayments(),
+                    builder: (context, paySnap) {
+                      return StreamBuilder<List<Goal>>(
+                        stream: db.watchGoals(),
+                        builder: (context, goalSnap) {
+                          return _Body(
+                            txns: txns,
+                            categories: categories,
+                            debts: debtSnap.data ?? const [],
+                            debtPayments: paySnap.data ?? const [],
+                            goals: goalSnap.data ?? const [],
+                          );
+                        },
                       );
                     },
                   );
@@ -54,12 +61,14 @@ class _Body extends StatelessWidget {
     required this.txns,
     required this.categories,
     required this.debts,
+    required this.debtPayments,
     required this.goals,
   });
 
   final List<Transaction> txns;
   final List<Category> categories;
   final List<Debt> debts;
+  final List<DebtPayment> debtPayments;
   final List<Goal> goals;
 
   @override
@@ -69,7 +78,10 @@ class _Body extends StatelessWidget {
     final delta = balanceDeltaPct(txns);
 
     final debtTotal = debts.fold<double>(0, (s, d) => s + d.totalAmount);
-    final debtPaid = debts.fold<double>(0, (s, d) => s + d.paidAmount);
+    final debtPaid = debts.fold<double>(
+        0,
+        (s, d) =>
+            s + progressOf(d, debtPayments).paid.clamp(0.0, d.totalAmount));
     final debtLeft = debtTotal - debtPaid;
     final debtPaidFrac = debtTotal <= 0 ? 0.0 : debtPaid / debtTotal;
 

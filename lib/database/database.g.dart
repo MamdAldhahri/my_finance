@@ -1517,6 +1517,70 @@ class $DebtsTable extends Debts with TableInfo<$DebtsTable, Debt> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _isFixedMeta = const VerificationMeta(
+    'isFixed',
+  );
+  @override
+  late final GeneratedColumn<bool> isFixed = GeneratedColumn<bool>(
+    'is_fixed',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_fixed" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _fixedAmountMeta = const VerificationMeta(
+    'fixedAmount',
+  );
+  @override
+  late final GeneratedColumn<double> fixedAmount = GeneratedColumn<double>(
+    'fixed_amount',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _matchSenderMeta = const VerificationMeta(
+    'matchSender',
+  );
+  @override
+  late final GeneratedColumn<String> matchSender = GeneratedColumn<String>(
+    'match_sender',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _matchCardMeta = const VerificationMeta(
+    'matchCard',
+  );
+  @override
+  late final GeneratedColumn<String> matchCard = GeneratedColumn<String>(
+    'match_card',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _matchCounterpartyMeta = const VerificationMeta(
+    'matchCounterparty',
+  );
+  @override
+  late final GeneratedColumn<String> matchCounterparty =
+      GeneratedColumn<String>(
+        'match_counterparty',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant(''),
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1527,6 +1591,11 @@ class $DebtsTable extends Debts with TableInfo<$DebtsTable, Debt> {
     apr,
     minPayment,
     dueDate,
+    isFixed,
+    fixedAmount,
+    matchSender,
+    matchCard,
+    matchCounterparty,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1592,6 +1661,45 @@ class $DebtsTable extends Debts with TableInfo<$DebtsTable, Debt> {
         dueDate.isAcceptableOrUnknown(data['due_date']!, _dueDateMeta),
       );
     }
+    if (data.containsKey('is_fixed')) {
+      context.handle(
+        _isFixedMeta,
+        isFixed.isAcceptableOrUnknown(data['is_fixed']!, _isFixedMeta),
+      );
+    }
+    if (data.containsKey('fixed_amount')) {
+      context.handle(
+        _fixedAmountMeta,
+        fixedAmount.isAcceptableOrUnknown(
+          data['fixed_amount']!,
+          _fixedAmountMeta,
+        ),
+      );
+    }
+    if (data.containsKey('match_sender')) {
+      context.handle(
+        _matchSenderMeta,
+        matchSender.isAcceptableOrUnknown(
+          data['match_sender']!,
+          _matchSenderMeta,
+        ),
+      );
+    }
+    if (data.containsKey('match_card')) {
+      context.handle(
+        _matchCardMeta,
+        matchCard.isAcceptableOrUnknown(data['match_card']!, _matchCardMeta),
+      );
+    }
+    if (data.containsKey('match_counterparty')) {
+      context.handle(
+        _matchCounterpartyMeta,
+        matchCounterparty.isAcceptableOrUnknown(
+          data['match_counterparty']!,
+          _matchCounterpartyMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1633,6 +1741,26 @@ class $DebtsTable extends Debts with TableInfo<$DebtsTable, Debt> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}due_date'],
       ),
+      isFixed: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_fixed'],
+      )!,
+      fixedAmount: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}fixed_amount'],
+      )!,
+      matchSender: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}match_sender'],
+      )!,
+      matchCard: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}match_card'],
+      )!,
+      matchCounterparty: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}match_counterparty'],
+      )!,
     );
   }
 
@@ -1651,6 +1779,11 @@ class Debt extends DataClass implements Insertable<Debt> {
   final double apr;
   final double minPayment;
   final DateTime? dueDate;
+  final bool isFixed;
+  final double fixedAmount;
+  final String matchSender;
+  final String matchCard;
+  final String matchCounterparty;
   const Debt({
     required this.id,
     required this.name,
@@ -1660,6 +1793,11 @@ class Debt extends DataClass implements Insertable<Debt> {
     required this.apr,
     required this.minPayment,
     this.dueDate,
+    required this.isFixed,
+    required this.fixedAmount,
+    required this.matchSender,
+    required this.matchCard,
+    required this.matchCounterparty,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1674,6 +1812,11 @@ class Debt extends DataClass implements Insertable<Debt> {
     if (!nullToAbsent || dueDate != null) {
       map['due_date'] = Variable<DateTime>(dueDate);
     }
+    map['is_fixed'] = Variable<bool>(isFixed);
+    map['fixed_amount'] = Variable<double>(fixedAmount);
+    map['match_sender'] = Variable<String>(matchSender);
+    map['match_card'] = Variable<String>(matchCard);
+    map['match_counterparty'] = Variable<String>(matchCounterparty);
     return map;
   }
 
@@ -1689,6 +1832,11 @@ class Debt extends DataClass implements Insertable<Debt> {
       dueDate: dueDate == null && nullToAbsent
           ? const Value.absent()
           : Value(dueDate),
+      isFixed: Value(isFixed),
+      fixedAmount: Value(fixedAmount),
+      matchSender: Value(matchSender),
+      matchCard: Value(matchCard),
+      matchCounterparty: Value(matchCounterparty),
     );
   }
 
@@ -1706,6 +1854,11 @@ class Debt extends DataClass implements Insertable<Debt> {
       apr: serializer.fromJson<double>(json['apr']),
       minPayment: serializer.fromJson<double>(json['minPayment']),
       dueDate: serializer.fromJson<DateTime?>(json['dueDate']),
+      isFixed: serializer.fromJson<bool>(json['isFixed']),
+      fixedAmount: serializer.fromJson<double>(json['fixedAmount']),
+      matchSender: serializer.fromJson<String>(json['matchSender']),
+      matchCard: serializer.fromJson<String>(json['matchCard']),
+      matchCounterparty: serializer.fromJson<String>(json['matchCounterparty']),
     );
   }
   @override
@@ -1720,6 +1873,11 @@ class Debt extends DataClass implements Insertable<Debt> {
       'apr': serializer.toJson<double>(apr),
       'minPayment': serializer.toJson<double>(minPayment),
       'dueDate': serializer.toJson<DateTime?>(dueDate),
+      'isFixed': serializer.toJson<bool>(isFixed),
+      'fixedAmount': serializer.toJson<double>(fixedAmount),
+      'matchSender': serializer.toJson<String>(matchSender),
+      'matchCard': serializer.toJson<String>(matchCard),
+      'matchCounterparty': serializer.toJson<String>(matchCounterparty),
     };
   }
 
@@ -1732,6 +1890,11 @@ class Debt extends DataClass implements Insertable<Debt> {
     double? apr,
     double? minPayment,
     Value<DateTime?> dueDate = const Value.absent(),
+    bool? isFixed,
+    double? fixedAmount,
+    String? matchSender,
+    String? matchCard,
+    String? matchCounterparty,
   }) => Debt(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -1741,6 +1904,11 @@ class Debt extends DataClass implements Insertable<Debt> {
     apr: apr ?? this.apr,
     minPayment: minPayment ?? this.minPayment,
     dueDate: dueDate.present ? dueDate.value : this.dueDate,
+    isFixed: isFixed ?? this.isFixed,
+    fixedAmount: fixedAmount ?? this.fixedAmount,
+    matchSender: matchSender ?? this.matchSender,
+    matchCard: matchCard ?? this.matchCard,
+    matchCounterparty: matchCounterparty ?? this.matchCounterparty,
   );
   Debt copyWithCompanion(DebtsCompanion data) {
     return Debt(
@@ -1758,6 +1926,17 @@ class Debt extends DataClass implements Insertable<Debt> {
           ? data.minPayment.value
           : this.minPayment,
       dueDate: data.dueDate.present ? data.dueDate.value : this.dueDate,
+      isFixed: data.isFixed.present ? data.isFixed.value : this.isFixed,
+      fixedAmount: data.fixedAmount.present
+          ? data.fixedAmount.value
+          : this.fixedAmount,
+      matchSender: data.matchSender.present
+          ? data.matchSender.value
+          : this.matchSender,
+      matchCard: data.matchCard.present ? data.matchCard.value : this.matchCard,
+      matchCounterparty: data.matchCounterparty.present
+          ? data.matchCounterparty.value
+          : this.matchCounterparty,
     );
   }
 
@@ -1771,7 +1950,12 @@ class Debt extends DataClass implements Insertable<Debt> {
           ..write('paidAmount: $paidAmount, ')
           ..write('apr: $apr, ')
           ..write('minPayment: $minPayment, ')
-          ..write('dueDate: $dueDate')
+          ..write('dueDate: $dueDate, ')
+          ..write('isFixed: $isFixed, ')
+          ..write('fixedAmount: $fixedAmount, ')
+          ..write('matchSender: $matchSender, ')
+          ..write('matchCard: $matchCard, ')
+          ..write('matchCounterparty: $matchCounterparty')
           ..write(')'))
         .toString();
   }
@@ -1786,6 +1970,11 @@ class Debt extends DataClass implements Insertable<Debt> {
     apr,
     minPayment,
     dueDate,
+    isFixed,
+    fixedAmount,
+    matchSender,
+    matchCard,
+    matchCounterparty,
   );
   @override
   bool operator ==(Object other) =>
@@ -1798,7 +1987,12 @@ class Debt extends DataClass implements Insertable<Debt> {
           other.paidAmount == this.paidAmount &&
           other.apr == this.apr &&
           other.minPayment == this.minPayment &&
-          other.dueDate == this.dueDate);
+          other.dueDate == this.dueDate &&
+          other.isFixed == this.isFixed &&
+          other.fixedAmount == this.fixedAmount &&
+          other.matchSender == this.matchSender &&
+          other.matchCard == this.matchCard &&
+          other.matchCounterparty == this.matchCounterparty);
 }
 
 class DebtsCompanion extends UpdateCompanion<Debt> {
@@ -1810,6 +2004,11 @@ class DebtsCompanion extends UpdateCompanion<Debt> {
   final Value<double> apr;
   final Value<double> minPayment;
   final Value<DateTime?> dueDate;
+  final Value<bool> isFixed;
+  final Value<double> fixedAmount;
+  final Value<String> matchSender;
+  final Value<String> matchCard;
+  final Value<String> matchCounterparty;
   const DebtsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -1819,6 +2018,11 @@ class DebtsCompanion extends UpdateCompanion<Debt> {
     this.apr = const Value.absent(),
     this.minPayment = const Value.absent(),
     this.dueDate = const Value.absent(),
+    this.isFixed = const Value.absent(),
+    this.fixedAmount = const Value.absent(),
+    this.matchSender = const Value.absent(),
+    this.matchCard = const Value.absent(),
+    this.matchCounterparty = const Value.absent(),
   });
   DebtsCompanion.insert({
     this.id = const Value.absent(),
@@ -1829,6 +2033,11 @@ class DebtsCompanion extends UpdateCompanion<Debt> {
     this.apr = const Value.absent(),
     this.minPayment = const Value.absent(),
     this.dueDate = const Value.absent(),
+    this.isFixed = const Value.absent(),
+    this.fixedAmount = const Value.absent(),
+    this.matchSender = const Value.absent(),
+    this.matchCard = const Value.absent(),
+    this.matchCounterparty = const Value.absent(),
   }) : name = Value(name),
        totalAmount = Value(totalAmount);
   static Insertable<Debt> custom({
@@ -1840,6 +2049,11 @@ class DebtsCompanion extends UpdateCompanion<Debt> {
     Expression<double>? apr,
     Expression<double>? minPayment,
     Expression<DateTime>? dueDate,
+    Expression<bool>? isFixed,
+    Expression<double>? fixedAmount,
+    Expression<String>? matchSender,
+    Expression<String>? matchCard,
+    Expression<String>? matchCounterparty,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1850,6 +2064,11 @@ class DebtsCompanion extends UpdateCompanion<Debt> {
       if (apr != null) 'apr': apr,
       if (minPayment != null) 'min_payment': minPayment,
       if (dueDate != null) 'due_date': dueDate,
+      if (isFixed != null) 'is_fixed': isFixed,
+      if (fixedAmount != null) 'fixed_amount': fixedAmount,
+      if (matchSender != null) 'match_sender': matchSender,
+      if (matchCard != null) 'match_card': matchCard,
+      if (matchCounterparty != null) 'match_counterparty': matchCounterparty,
     });
   }
 
@@ -1862,6 +2081,11 @@ class DebtsCompanion extends UpdateCompanion<Debt> {
     Value<double>? apr,
     Value<double>? minPayment,
     Value<DateTime?>? dueDate,
+    Value<bool>? isFixed,
+    Value<double>? fixedAmount,
+    Value<String>? matchSender,
+    Value<String>? matchCard,
+    Value<String>? matchCounterparty,
   }) {
     return DebtsCompanion(
       id: id ?? this.id,
@@ -1872,6 +2096,11 @@ class DebtsCompanion extends UpdateCompanion<Debt> {
       apr: apr ?? this.apr,
       minPayment: minPayment ?? this.minPayment,
       dueDate: dueDate ?? this.dueDate,
+      isFixed: isFixed ?? this.isFixed,
+      fixedAmount: fixedAmount ?? this.fixedAmount,
+      matchSender: matchSender ?? this.matchSender,
+      matchCard: matchCard ?? this.matchCard,
+      matchCounterparty: matchCounterparty ?? this.matchCounterparty,
     );
   }
 
@@ -1902,6 +2131,21 @@ class DebtsCompanion extends UpdateCompanion<Debt> {
     if (dueDate.present) {
       map['due_date'] = Variable<DateTime>(dueDate.value);
     }
+    if (isFixed.present) {
+      map['is_fixed'] = Variable<bool>(isFixed.value);
+    }
+    if (fixedAmount.present) {
+      map['fixed_amount'] = Variable<double>(fixedAmount.value);
+    }
+    if (matchSender.present) {
+      map['match_sender'] = Variable<String>(matchSender.value);
+    }
+    if (matchCard.present) {
+      map['match_card'] = Variable<String>(matchCard.value);
+    }
+    if (matchCounterparty.present) {
+      map['match_counterparty'] = Variable<String>(matchCounterparty.value);
+    }
     return map;
   }
 
@@ -1915,7 +2159,466 @@ class DebtsCompanion extends UpdateCompanion<Debt> {
           ..write('paidAmount: $paidAmount, ')
           ..write('apr: $apr, ')
           ..write('minPayment: $minPayment, ')
-          ..write('dueDate: $dueDate')
+          ..write('dueDate: $dueDate, ')
+          ..write('isFixed: $isFixed, ')
+          ..write('fixedAmount: $fixedAmount, ')
+          ..write('matchSender: $matchSender, ')
+          ..write('matchCard: $matchCard, ')
+          ..write('matchCounterparty: $matchCounterparty')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $DebtPaymentsTable extends DebtPayments
+    with TableInfo<$DebtPaymentsTable, DebtPayment> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DebtPaymentsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _debtIdMeta = const VerificationMeta('debtId');
+  @override
+  late final GeneratedColumn<int> debtId = GeneratedColumn<int>(
+    'debt_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _transactionIdMeta = const VerificationMeta(
+    'transactionId',
+  );
+  @override
+  late final GeneratedColumn<int> transactionId = GeneratedColumn<int>(
+    'transaction_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _amountMeta = const VerificationMeta('amount');
+  @override
+  late final GeneratedColumn<double> amount = GeneratedColumn<double>(
+    'amount',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _dateMeta = const VerificationMeta('date');
+  @override
+  late final GeneratedColumn<DateTime> date = GeneratedColumn<DateTime>(
+    'date',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _noteMeta = const VerificationMeta('note');
+  @override
+  late final GeneratedColumn<String> note = GeneratedColumn<String>(
+    'note',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<PaymentStatus, int> status =
+      GeneratedColumn<int>(
+        'status',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: false,
+        defaultValue: const Constant(0),
+      ).withConverter<PaymentStatus>($DebtPaymentsTable.$converterstatus);
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    debtId,
+    transactionId,
+    amount,
+    date,
+    note,
+    status,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'debt_payments';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DebtPayment> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('debt_id')) {
+      context.handle(
+        _debtIdMeta,
+        debtId.isAcceptableOrUnknown(data['debt_id']!, _debtIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_debtIdMeta);
+    }
+    if (data.containsKey('transaction_id')) {
+      context.handle(
+        _transactionIdMeta,
+        transactionId.isAcceptableOrUnknown(
+          data['transaction_id']!,
+          _transactionIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('amount')) {
+      context.handle(
+        _amountMeta,
+        amount.isAcceptableOrUnknown(data['amount']!, _amountMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_amountMeta);
+    }
+    if (data.containsKey('date')) {
+      context.handle(
+        _dateMeta,
+        date.isAcceptableOrUnknown(data['date']!, _dateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dateMeta);
+    }
+    if (data.containsKey('note')) {
+      context.handle(
+        _noteMeta,
+        note.isAcceptableOrUnknown(data['note']!, _noteMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {debtId, transactionId},
+  ];
+  @override
+  DebtPayment map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DebtPayment(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      debtId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}debt_id'],
+      )!,
+      transactionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}transaction_id'],
+      ),
+      amount: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}amount'],
+      )!,
+      date: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}date'],
+      )!,
+      note: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}note'],
+      )!,
+      status: $DebtPaymentsTable.$converterstatus.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}status'],
+        )!,
+      ),
+    );
+  }
+
+  @override
+  $DebtPaymentsTable createAlias(String alias) {
+    return $DebtPaymentsTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<PaymentStatus, int, int> $converterstatus =
+      const EnumIndexConverter<PaymentStatus>(PaymentStatus.values);
+}
+
+class DebtPayment extends DataClass implements Insertable<DebtPayment> {
+  final int id;
+  final int debtId;
+  final int? transactionId;
+  final double amount;
+  final DateTime date;
+  final String note;
+  final PaymentStatus status;
+  const DebtPayment({
+    required this.id,
+    required this.debtId,
+    this.transactionId,
+    required this.amount,
+    required this.date,
+    required this.note,
+    required this.status,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['debt_id'] = Variable<int>(debtId);
+    if (!nullToAbsent || transactionId != null) {
+      map['transaction_id'] = Variable<int>(transactionId);
+    }
+    map['amount'] = Variable<double>(amount);
+    map['date'] = Variable<DateTime>(date);
+    map['note'] = Variable<String>(note);
+    {
+      map['status'] = Variable<int>(
+        $DebtPaymentsTable.$converterstatus.toSql(status),
+      );
+    }
+    return map;
+  }
+
+  DebtPaymentsCompanion toCompanion(bool nullToAbsent) {
+    return DebtPaymentsCompanion(
+      id: Value(id),
+      debtId: Value(debtId),
+      transactionId: transactionId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(transactionId),
+      amount: Value(amount),
+      date: Value(date),
+      note: Value(note),
+      status: Value(status),
+    );
+  }
+
+  factory DebtPayment.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DebtPayment(
+      id: serializer.fromJson<int>(json['id']),
+      debtId: serializer.fromJson<int>(json['debtId']),
+      transactionId: serializer.fromJson<int?>(json['transactionId']),
+      amount: serializer.fromJson<double>(json['amount']),
+      date: serializer.fromJson<DateTime>(json['date']),
+      note: serializer.fromJson<String>(json['note']),
+      status: $DebtPaymentsTable.$converterstatus.fromJson(
+        serializer.fromJson<int>(json['status']),
+      ),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'debtId': serializer.toJson<int>(debtId),
+      'transactionId': serializer.toJson<int?>(transactionId),
+      'amount': serializer.toJson<double>(amount),
+      'date': serializer.toJson<DateTime>(date),
+      'note': serializer.toJson<String>(note),
+      'status': serializer.toJson<int>(
+        $DebtPaymentsTable.$converterstatus.toJson(status),
+      ),
+    };
+  }
+
+  DebtPayment copyWith({
+    int? id,
+    int? debtId,
+    Value<int?> transactionId = const Value.absent(),
+    double? amount,
+    DateTime? date,
+    String? note,
+    PaymentStatus? status,
+  }) => DebtPayment(
+    id: id ?? this.id,
+    debtId: debtId ?? this.debtId,
+    transactionId: transactionId.present
+        ? transactionId.value
+        : this.transactionId,
+    amount: amount ?? this.amount,
+    date: date ?? this.date,
+    note: note ?? this.note,
+    status: status ?? this.status,
+  );
+  DebtPayment copyWithCompanion(DebtPaymentsCompanion data) {
+    return DebtPayment(
+      id: data.id.present ? data.id.value : this.id,
+      debtId: data.debtId.present ? data.debtId.value : this.debtId,
+      transactionId: data.transactionId.present
+          ? data.transactionId.value
+          : this.transactionId,
+      amount: data.amount.present ? data.amount.value : this.amount,
+      date: data.date.present ? data.date.value : this.date,
+      note: data.note.present ? data.note.value : this.note,
+      status: data.status.present ? data.status.value : this.status,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DebtPayment(')
+          ..write('id: $id, ')
+          ..write('debtId: $debtId, ')
+          ..write('transactionId: $transactionId, ')
+          ..write('amount: $amount, ')
+          ..write('date: $date, ')
+          ..write('note: $note, ')
+          ..write('status: $status')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, debtId, transactionId, amount, date, note, status);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DebtPayment &&
+          other.id == this.id &&
+          other.debtId == this.debtId &&
+          other.transactionId == this.transactionId &&
+          other.amount == this.amount &&
+          other.date == this.date &&
+          other.note == this.note &&
+          other.status == this.status);
+}
+
+class DebtPaymentsCompanion extends UpdateCompanion<DebtPayment> {
+  final Value<int> id;
+  final Value<int> debtId;
+  final Value<int?> transactionId;
+  final Value<double> amount;
+  final Value<DateTime> date;
+  final Value<String> note;
+  final Value<PaymentStatus> status;
+  const DebtPaymentsCompanion({
+    this.id = const Value.absent(),
+    this.debtId = const Value.absent(),
+    this.transactionId = const Value.absent(),
+    this.amount = const Value.absent(),
+    this.date = const Value.absent(),
+    this.note = const Value.absent(),
+    this.status = const Value.absent(),
+  });
+  DebtPaymentsCompanion.insert({
+    this.id = const Value.absent(),
+    required int debtId,
+    this.transactionId = const Value.absent(),
+    required double amount,
+    required DateTime date,
+    this.note = const Value.absent(),
+    this.status = const Value.absent(),
+  }) : debtId = Value(debtId),
+       amount = Value(amount),
+       date = Value(date);
+  static Insertable<DebtPayment> custom({
+    Expression<int>? id,
+    Expression<int>? debtId,
+    Expression<int>? transactionId,
+    Expression<double>? amount,
+    Expression<DateTime>? date,
+    Expression<String>? note,
+    Expression<int>? status,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (debtId != null) 'debt_id': debtId,
+      if (transactionId != null) 'transaction_id': transactionId,
+      if (amount != null) 'amount': amount,
+      if (date != null) 'date': date,
+      if (note != null) 'note': note,
+      if (status != null) 'status': status,
+    });
+  }
+
+  DebtPaymentsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? debtId,
+    Value<int?>? transactionId,
+    Value<double>? amount,
+    Value<DateTime>? date,
+    Value<String>? note,
+    Value<PaymentStatus>? status,
+  }) {
+    return DebtPaymentsCompanion(
+      id: id ?? this.id,
+      debtId: debtId ?? this.debtId,
+      transactionId: transactionId ?? this.transactionId,
+      amount: amount ?? this.amount,
+      date: date ?? this.date,
+      note: note ?? this.note,
+      status: status ?? this.status,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (debtId.present) {
+      map['debt_id'] = Variable<int>(debtId.value);
+    }
+    if (transactionId.present) {
+      map['transaction_id'] = Variable<int>(transactionId.value);
+    }
+    if (amount.present) {
+      map['amount'] = Variable<double>(amount.value);
+    }
+    if (date.present) {
+      map['date'] = Variable<DateTime>(date.value);
+    }
+    if (note.present) {
+      map['note'] = Variable<String>(note.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<int>(
+        $DebtPaymentsTable.$converterstatus.toSql(status.value),
+      );
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DebtPaymentsCompanion(')
+          ..write('id: $id, ')
+          ..write('debtId: $debtId, ')
+          ..write('transactionId: $transactionId, ')
+          ..write('amount: $amount, ')
+          ..write('date: $date, ')
+          ..write('note: $note, ')
+          ..write('status: $status')
           ..write(')'))
         .toString();
   }
@@ -2133,6 +2836,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $CategoriesTable categories = $CategoriesTable(this);
   late final $GoalsTable goals = $GoalsTable(this);
   late final $DebtsTable debts = $DebtsTable(this);
+  late final $DebtPaymentsTable debtPayments = $DebtPaymentsTable(this);
   late final $SettingsTable settings = $SettingsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -2143,6 +2847,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     categories,
     goals,
     debts,
+    debtPayments,
     settings,
   ];
 }
@@ -2874,6 +3579,11 @@ typedef $$DebtsTableCreateCompanionBuilder =
       Value<double> apr,
       Value<double> minPayment,
       Value<DateTime?> dueDate,
+      Value<bool> isFixed,
+      Value<double> fixedAmount,
+      Value<String> matchSender,
+      Value<String> matchCard,
+      Value<String> matchCounterparty,
     });
 typedef $$DebtsTableUpdateCompanionBuilder =
     DebtsCompanion Function({
@@ -2885,6 +3595,11 @@ typedef $$DebtsTableUpdateCompanionBuilder =
       Value<double> apr,
       Value<double> minPayment,
       Value<DateTime?> dueDate,
+      Value<bool> isFixed,
+      Value<double> fixedAmount,
+      Value<String> matchSender,
+      Value<String> matchCard,
+      Value<String> matchCounterparty,
     });
 
 class $$DebtsTableFilterComposer extends Composer<_$AppDatabase, $DebtsTable> {
@@ -2932,6 +3647,31 @@ class $$DebtsTableFilterComposer extends Composer<_$AppDatabase, $DebtsTable> {
 
   ColumnFilters<DateTime> get dueDate => $composableBuilder(
     column: $table.dueDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isFixed => $composableBuilder(
+    column: $table.isFixed,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get fixedAmount => $composableBuilder(
+    column: $table.fixedAmount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get matchSender => $composableBuilder(
+    column: $table.matchSender,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get matchCard => $composableBuilder(
+    column: $table.matchCard,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get matchCounterparty => $composableBuilder(
+    column: $table.matchCounterparty,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -2984,6 +3724,31 @@ class $$DebtsTableOrderingComposer
     column: $table.dueDate,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get isFixed => $composableBuilder(
+    column: $table.isFixed,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get fixedAmount => $composableBuilder(
+    column: $table.fixedAmount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get matchSender => $composableBuilder(
+    column: $table.matchSender,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get matchCard => $composableBuilder(
+    column: $table.matchCard,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get matchCounterparty => $composableBuilder(
+    column: $table.matchCounterparty,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$DebtsTableAnnotationComposer
@@ -3024,6 +3789,27 @@ class $$DebtsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get dueDate =>
       $composableBuilder(column: $table.dueDate, builder: (column) => column);
+
+  GeneratedColumn<bool> get isFixed =>
+      $composableBuilder(column: $table.isFixed, builder: (column) => column);
+
+  GeneratedColumn<double> get fixedAmount => $composableBuilder(
+    column: $table.fixedAmount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get matchSender => $composableBuilder(
+    column: $table.matchSender,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get matchCard =>
+      $composableBuilder(column: $table.matchCard, builder: (column) => column);
+
+  GeneratedColumn<String> get matchCounterparty => $composableBuilder(
+    column: $table.matchCounterparty,
+    builder: (column) => column,
+  );
 }
 
 class $$DebtsTableTableManager
@@ -3062,6 +3848,11 @@ class $$DebtsTableTableManager
                 Value<double> apr = const Value.absent(),
                 Value<double> minPayment = const Value.absent(),
                 Value<DateTime?> dueDate = const Value.absent(),
+                Value<bool> isFixed = const Value.absent(),
+                Value<double> fixedAmount = const Value.absent(),
+                Value<String> matchSender = const Value.absent(),
+                Value<String> matchCard = const Value.absent(),
+                Value<String> matchCounterparty = const Value.absent(),
               }) => DebtsCompanion(
                 id: id,
                 name: name,
@@ -3071,6 +3862,11 @@ class $$DebtsTableTableManager
                 apr: apr,
                 minPayment: minPayment,
                 dueDate: dueDate,
+                isFixed: isFixed,
+                fixedAmount: fixedAmount,
+                matchSender: matchSender,
+                matchCard: matchCard,
+                matchCounterparty: matchCounterparty,
               ),
           createCompanionCallback:
               ({
@@ -3082,6 +3878,11 @@ class $$DebtsTableTableManager
                 Value<double> apr = const Value.absent(),
                 Value<double> minPayment = const Value.absent(),
                 Value<DateTime?> dueDate = const Value.absent(),
+                Value<bool> isFixed = const Value.absent(),
+                Value<double> fixedAmount = const Value.absent(),
+                Value<String> matchSender = const Value.absent(),
+                Value<String> matchCard = const Value.absent(),
+                Value<String> matchCounterparty = const Value.absent(),
               }) => DebtsCompanion.insert(
                 id: id,
                 name: name,
@@ -3091,6 +3892,11 @@ class $$DebtsTableTableManager
                 apr: apr,
                 minPayment: minPayment,
                 dueDate: dueDate,
+                isFixed: isFixed,
+                fixedAmount: fixedAmount,
+                matchSender: matchSender,
+                matchCard: matchCard,
+                matchCounterparty: matchCounterparty,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -3112,6 +3918,241 @@ typedef $$DebtsTableProcessedTableManager =
       $$DebtsTableUpdateCompanionBuilder,
       (Debt, BaseReferences<_$AppDatabase, $DebtsTable, Debt>),
       Debt,
+      PrefetchHooks Function()
+    >;
+typedef $$DebtPaymentsTableCreateCompanionBuilder =
+    DebtPaymentsCompanion Function({
+      Value<int> id,
+      required int debtId,
+      Value<int?> transactionId,
+      required double amount,
+      required DateTime date,
+      Value<String> note,
+      Value<PaymentStatus> status,
+    });
+typedef $$DebtPaymentsTableUpdateCompanionBuilder =
+    DebtPaymentsCompanion Function({
+      Value<int> id,
+      Value<int> debtId,
+      Value<int?> transactionId,
+      Value<double> amount,
+      Value<DateTime> date,
+      Value<String> note,
+      Value<PaymentStatus> status,
+    });
+
+class $$DebtPaymentsTableFilterComposer
+    extends Composer<_$AppDatabase, $DebtPaymentsTable> {
+  $$DebtPaymentsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get debtId => $composableBuilder(
+    column: $table.debtId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get transactionId => $composableBuilder(
+    column: $table.transactionId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<PaymentStatus, PaymentStatus, int>
+  get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+}
+
+class $$DebtPaymentsTableOrderingComposer
+    extends Composer<_$AppDatabase, $DebtPaymentsTable> {
+  $$DebtPaymentsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get debtId => $composableBuilder(
+    column: $table.debtId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get transactionId => $composableBuilder(
+    column: $table.transactionId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DebtPaymentsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DebtPaymentsTable> {
+  $$DebtPaymentsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get debtId =>
+      $composableBuilder(column: $table.debtId, builder: (column) => column);
+
+  GeneratedColumn<int> get transactionId => $composableBuilder(
+    column: $table.transactionId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get amount =>
+      $composableBuilder(column: $table.amount, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get date =>
+      $composableBuilder(column: $table.date, builder: (column) => column);
+
+  GeneratedColumn<String> get note =>
+      $composableBuilder(column: $table.note, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<PaymentStatus, int> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+}
+
+class $$DebtPaymentsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DebtPaymentsTable,
+          DebtPayment,
+          $$DebtPaymentsTableFilterComposer,
+          $$DebtPaymentsTableOrderingComposer,
+          $$DebtPaymentsTableAnnotationComposer,
+          $$DebtPaymentsTableCreateCompanionBuilder,
+          $$DebtPaymentsTableUpdateCompanionBuilder,
+          (
+            DebtPayment,
+            BaseReferences<_$AppDatabase, $DebtPaymentsTable, DebtPayment>,
+          ),
+          DebtPayment,
+          PrefetchHooks Function()
+        > {
+  $$DebtPaymentsTableTableManager(_$AppDatabase db, $DebtPaymentsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DebtPaymentsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DebtPaymentsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DebtPaymentsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> debtId = const Value.absent(),
+                Value<int?> transactionId = const Value.absent(),
+                Value<double> amount = const Value.absent(),
+                Value<DateTime> date = const Value.absent(),
+                Value<String> note = const Value.absent(),
+                Value<PaymentStatus> status = const Value.absent(),
+              }) => DebtPaymentsCompanion(
+                id: id,
+                debtId: debtId,
+                transactionId: transactionId,
+                amount: amount,
+                date: date,
+                note: note,
+                status: status,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int debtId,
+                Value<int?> transactionId = const Value.absent(),
+                required double amount,
+                required DateTime date,
+                Value<String> note = const Value.absent(),
+                Value<PaymentStatus> status = const Value.absent(),
+              }) => DebtPaymentsCompanion.insert(
+                id: id,
+                debtId: debtId,
+                transactionId: transactionId,
+                amount: amount,
+                date: date,
+                note: note,
+                status: status,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$DebtPaymentsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DebtPaymentsTable,
+      DebtPayment,
+      $$DebtPaymentsTableFilterComposer,
+      $$DebtPaymentsTableOrderingComposer,
+      $$DebtPaymentsTableAnnotationComposer,
+      $$DebtPaymentsTableCreateCompanionBuilder,
+      $$DebtPaymentsTableUpdateCompanionBuilder,
+      (
+        DebtPayment,
+        BaseReferences<_$AppDatabase, $DebtPaymentsTable, DebtPayment>,
+      ),
+      DebtPayment,
       PrefetchHooks Function()
     >;
 typedef $$SettingsTableCreateCompanionBuilder =
@@ -3259,6 +4300,8 @@ class $AppDatabaseManager {
       $$GoalsTableTableManager(_db, _db.goals);
   $$DebtsTableTableManager get debts =>
       $$DebtsTableTableManager(_db, _db.debts);
+  $$DebtPaymentsTableTableManager get debtPayments =>
+      $$DebtPaymentsTableTableManager(_db, _db.debtPayments);
   $$SettingsTableTableManager get settings =>
       $$SettingsTableTableManager(_db, _db.settings);
 }

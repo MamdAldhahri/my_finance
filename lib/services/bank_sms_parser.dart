@@ -106,9 +106,8 @@ const _marketingWords = [
   'www.',
   'unsubscribe',
   'reward point',
-  'installment',
-  'instalment',
-  ' emi ',
+  // NOTE: do NOT add "installment" / "instalment" / "EMI" here — real loan
+  // installment alerts use those words and must be imported.
   '% off',
   '% cashback',
   'limited time',

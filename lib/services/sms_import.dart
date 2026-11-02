@@ -3,6 +3,7 @@ import 'package:drift/drift.dart' show Value;
 
 import '../database/database.dart';
 import 'bank_sms_parser.dart';
+import 'debt_matching.dart';
 
 /// One SMS sender, summarised for the "which chat is your bank?" picker.
 class SmsSender {
@@ -108,12 +109,13 @@ class SmsImportService {
     }
   }
 
-  /// Start of the import window: the current month plus the previous two.
-  /// Messages older than that are ignored, so scans stay fast even on phones
+  /// Start of the import window: the current month plus the previous five
+  /// (six months in all). Long enough to back-fill a monthly debt payment's
+  /// history; older messages are ignored so scans stay fast even on phones
   /// holding years of SMS.
   int get _cutoffMillis {
     final now = DateTime.now();
-    return DateTime(now.year, now.month - 2, 1).millisecondsSinceEpoch;
+    return DateTime(now.year, now.month - 5, 1).millisecondsSinceEpoch;
   }
 
   static const _cols = [
@@ -124,7 +126,7 @@ class SmsImportService {
   ];
 
   /// Reads recent inbox messages across all senders (used only by the bank
-  /// picker), newest first, within the one-month window.
+  /// picker), newest first, within the six-month window.
   Future<List<SmsMessage>> _readInbox() async {
     try {
       return await _telephony.getInboxSms(
@@ -139,7 +141,7 @@ class SmsImportService {
     }
   }
 
-  /// Reads recent messages from a single [sender] within the one-month window.
+  /// Reads recent messages from a single [sender] within the six-month window.
   /// Filtering by address in the query means the whole inbox is never scanned.
   Future<List<SmsMessage>> _readInboxFrom(String sender) async {
     try {
@@ -202,6 +204,12 @@ class SmsImportService {
         smsId: Value(sms.id),
       ),
     );
-    return rowId != null;
+    if (rowId == null) return false;
+
+    // A new alert may be a fixed debt payment (e.g. the monthly car-loan
+    // transfer): queue it as a suggestion for the user to confirm.
+    final txn = await _db.transactionById(rowId);
+    if (txn != null) await suggestDebtMatchesForTransaction(_db, txn);
+    return true;
   }
 }
