@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 import '../database/database.dart';
 import '../format.dart';
 import '../main.dart';
-import '../services/derive.dart';
+import '../services/category_matching.dart';
 import '../services/sms_import.dart';
 import '../theme.dart';
+import '../widgets/category_resolver_builder.dart';
 import '../widgets/transaction_row.dart';
 import '../widgets/ui.dart';
 
@@ -73,12 +74,17 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
   Future<void> _openCategorySheet(Transaction txn) async {
     final categories = await db.allCategories();
+    final resolver = await CategoryResolver.load(db);
     if (!mounted) return;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _AssignCategorySheet(txn: txn, categories: categories),
+      builder: (_) => _AssignCategorySheet(
+        txn: txn,
+        categories: categories,
+        resolver: resolver,
+      ),
     );
   }
 
@@ -94,15 +100,13 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             _header(),
             const SizedBox(height: 16),
             Expanded(
-              child: StreamBuilder<List<Category>>(
-                stream: db.watchCategories(),
-                builder: (context, catSnap) {
-                  final categories = catSnap.data ?? const [];
+              child: CategoryResolverBuilder(
+                builder: (context, categories, resolver) {
                   return StreamBuilder<List<Transaction>>(
                     stream: db.watchTransactions(),
                     builder: (context, txSnap) {
                       final all = txSnap.data ?? const [];
-                      return _content(all, categories);
+                      return _content(all, categories, resolver);
                     },
                   );
                 },
@@ -145,7 +149,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     );
   }
 
-  Widget _content(List<Transaction> all, List<Category> categories) {
+  Widget _content(
+    List<Transaction> all,
+    List<Category> categories,
+    CategoryResolver resolver,
+  ) {
     final now = DateTime.now();
     bool thisMonth(Transaction t) =>
         t.date.year == now.year && t.date.month == now.month;
@@ -229,7 +237,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 for (var i = 0; i < filtered.length; i++)
                   TransactionRow(
                     txn: filtered[i],
-                    category: _resolve(filtered[i], categories),
+                    category: _resolve(filtered[i], categories, resolver),
                     showDivider: i != filtered.length - 1,
                     onTap: () => _openCategorySheet(filtered[i]),
                   ),
@@ -240,8 +248,12 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     );
   }
 
-  Category? _resolve(Transaction t, List<Category> categories) {
-    final id = categoryIdFor(t, categories);
+  Category? _resolve(
+    Transaction t,
+    List<Category> categories,
+    CategoryResolver resolver,
+  ) {
+    final id = resolver.categoryIdFor(t);
     if (id == null) return null;
     for (final c in categories) {
       if (c.id == id) return c;
@@ -783,26 +795,34 @@ InputDecoration _inputDecoration({String? label}) => InputDecoration(
 
 /// "Add to category" / delete sheet for a tapped transaction.
 class _AssignCategorySheet extends StatelessWidget {
-  const _AssignCategorySheet({required this.txn, required this.categories});
+  const _AssignCategorySheet({
+    required this.txn,
+    required this.categories,
+    required this.resolver,
+  });
 
   final Transaction txn;
   final List<Category> categories;
+  final CategoryResolver resolver;
 
   @override
   Widget build(BuildContext context) {
     final title = txn.description.isEmpty ? 'this transaction' : txn.description;
-    final byName = txn.source == TxSource.sms &&
-        !{'', 'payment', 'deposit'}.contains(txn.description.trim().toLowerCase());
-    final effective = categoryIdFor(txn, categories);
+    final byName = hasReusableName(txn);
+    final effective = resolver.categoryIdFor(txn);
     return _Sheet(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           _SheetHeader(
             title: 'Add to category',
-            subtitle: byName
-                ? 'Filing every "$title" transaction into this category.'
-                : 'File "$title" under a category.',
+            subtitle: resolver.isDebtPayment(txn) && effective == null
+                ? 'This is counted as a debt payment, so it is not in a '
+                    'category. You can still file it here.'
+                : byName
+                    ? 'Files every "$title" transaction into this category. '
+                        'Remove only this one with the button below.'
+                    : 'File "$title" under a category.',
           ),
           const Divider(height: 1, color: AppColors.cardBorder),
           Flexible(
@@ -824,8 +844,7 @@ class _AssignCategorySheet extends StatelessWidget {
                       final selected = effective == c.id;
                       return InkWell(
                         onTap: () async {
-                          await fileTransactionToCategory(
-                              db, txn, c, categories);
+                          await fileTransactionToCategory(db, txn, c);
                           if (context.mounted) Navigator.pop(context);
                         },
                         child: Container(
@@ -867,10 +886,9 @@ class _AssignCategorySheet extends StatelessWidget {
                 if (effective != null)
                   Expanded(
                     child: _OutlineButton(
-                      label: 'Remove from category',
+                      label: 'Remove this one',
                       onTap: () async {
-                        await unfileTransactionFromCategory(
-                            db, txn, categories);
+                        await removeTransactionFromCategory(db, txn);
                         if (context.mounted) Navigator.pop(context);
                       },
                     ),

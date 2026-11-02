@@ -18,7 +18,7 @@ enum TxSource { sms, manual }
 /// is always positive. For SMS rows, [balanceAfter] is the "available balance"
 /// the bank stated, and [smsId] (the Android inbox id) is kept unique so a
 /// re-scan never imports the same alert twice. [categoryId] is a *manual*
-/// category assignment that overrides the automatic shop-name matching.
+/// category assignment that overrides the automatic rule matching.
 class Transactions extends Table {
   IntColumn get id => integer().autoIncrement()();
   RealColumn get amount => real()();
@@ -43,18 +43,53 @@ class Transactions extends Table {
   IntColumn get smsId => integer().nullable().unique()();
 }
 
-/// A spending category defined by which bank chats and shop names feed it.
+/// A spending category. Which transactions it holds is decided by its
+/// [CategoryRules] (derived from example SMS the user picked), minus any
+/// [CategoryExclusions], plus transactions filed into it by hand
+/// ([Transactions.categoryId]).
 ///
-/// [senderIds] is a JSON list of bank sender ids. [shopNames] is a JSON map of
-/// senderId -> comma-separated shop-name fragments. A transaction is matched to
-/// this category when its sender is in [senderIds] and its description contains
-/// one of that sender's shop-name fragments (case-insensitive).
+/// [senderIds] / [shopNames] are the pre-v6 rule format (a JSON sender list
+/// and a senderId -> comma-separated shop-fragment map). They are only read
+/// by the v6 migration, which turns them into [CategoryRules] rows.
 class Categories extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text().withLength(min: 1, max: 60)();
   TextColumn get color => text().withDefault(const Constant('#3F6F63'))();
   TextColumn get senderIds => text().withDefault(const Constant('[]'))();
   TextColumn get shopNames => text().withDefault(const Constant('{}'))();
+}
+
+/// One auto-matching rule of a category, usually copied from an SMS the user
+/// picked: the bank [sender] ('' = any bank) and the merchant / masked
+/// recipient [counterparty]. [exact] rules compare the whole description;
+/// non-exact ones (typed shop names, migrated v5 fragments) match when the
+/// description contains [counterparty]. With [matchAmount] only transactions
+/// of [amount] (±half a baisa) match — this is what separates e.g. a fixed
+/// monthly transfer to a person from other transfers to the same person.
+/// [isCredit] limits the direction (null = both).
+class CategoryRules extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get categoryId => integer()();
+  TextColumn get sender => text().withDefault(const Constant(''))();
+  TextColumn get counterparty => text()();
+  BoolColumn get exact => boolean().withDefault(const Constant(true))();
+  BoolColumn get matchAmount => boolean().withDefault(const Constant(false))();
+  RealColumn get amount => real().withDefault(const Constant(0))();
+  BoolColumn get isCredit => boolean().nullable()();
+}
+
+/// "Not this category": a single transaction the user removed from a
+/// category even though one of its rules matches. Only that one transaction
+/// leaves; the rule keeps matching everything else.
+class CategoryExclusions extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get categoryId => integer()();
+  IntColumn get transactionId => integer()();
+
+  @override
+  List<Set<Column>> get uniqueKeys => [
+        {categoryId, transactionId},
+      ];
 }
 
 /// A savings target, e.g. "New car" – 3000 OMR, 750 already saved.
@@ -127,8 +162,16 @@ class Settings extends Table {
   Set<Column> get primaryKey => {key};
 }
 
-@DriftDatabase(
-    tables: [Transactions, Categories, Goals, Debts, DebtPayments, Settings])
+@DriftDatabase(tables: [
+  Transactions,
+  Categories,
+  CategoryRules,
+  CategoryExclusions,
+  Goals,
+  Debts,
+  DebtPayments,
+  Settings,
+])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
@@ -137,7 +180,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -164,8 +207,44 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(debts, debts.matchCounterparty);
             await m.createTable(debtPayments);
           }
+          if (from < 6) {
+            // v6: categories match by rules picked from SMS, with
+            // per-transaction removals. Carry the old shop-name fragments
+            // over as "name contains" rules so nothing changes on upgrade.
+            await m.createTable(categoryRules);
+            await m.createTable(categoryExclusions);
+            await _migrateShopNames();
+          }
         },
       );
+
+  Future<void> _migrateShopNames() async {
+    for (final c in await select(categories).get()) {
+      List<String> senders = const [];
+      Map<String, dynamic> shops = const {};
+      try {
+        senders = (jsonDecode(c.senderIds) as List).cast<String>();
+      } catch (_) {}
+      try {
+        shops = jsonDecode(c.shopNames) as Map<String, dynamic>;
+      } catch (_) {}
+      for (final sender in senders) {
+        final fragments = (shops[sender] ?? '')
+            .toString()
+            .split(',')
+            .map((f) => f.trim())
+            .where((f) => f.isNotEmpty);
+        for (final f in fragments) {
+          await into(categoryRules).insert(CategoryRulesCompanion.insert(
+            categoryId: c.id,
+            sender: Value(sender),
+            counterparty: f,
+            exact: const Value(false),
+          ));
+        }
+      }
+    }
+  }
 
   // ---- Transactions ------------------------------------------------------
   Stream<List<Transaction>> watchTransactions() =>
@@ -225,6 +304,8 @@ class AppDatabase extends _$AppDatabase {
     // A deleted SMS can no longer count toward a debt.
     await (delete(debtPayments)..where((p) => p.transactionId.equals(id)))
         .go();
+    await (delete(categoryExclusions)..where((e) => e.transactionId.equals(id)))
+        .go();
     return (delete(transactions)..where((t) => t.id.equals(id))).go();
   }
 
@@ -245,12 +326,71 @@ class AppDatabase extends _$AppDatabase {
   Future<bool> updateCategory(Category entry) =>
       update(categories).replace(entry);
 
+  Future<Category?> categoryById(int id) =>
+      (select(categories)..where((c) => c.id.equals(id))).getSingleOrNull();
+
   Future<int> deleteCategory(int id) async {
     // Un-file any transactions manually assigned to this category first.
     await (update(transactions)..where((t) => t.categoryId.equals(id)))
         .write(const TransactionsCompanion(categoryId: Value(null)));
+    await (delete(categoryRules)..where((r) => r.categoryId.equals(id))).go();
+    await (delete(categoryExclusions)..where((e) => e.categoryId.equals(id)))
+        .go();
     return (delete(categories)..where((c) => c.id.equals(id))).go();
   }
+
+  // ---- Category rules & exclusions ---------------------------------------
+  Stream<List<CategoryRule>> watchCategoryRules() =>
+      (select(categoryRules)..orderBy([(r) => OrderingTerm.asc(r.id)]))
+          .watch();
+
+  Future<List<CategoryRule>> allCategoryRules() =>
+      (select(categoryRules)..orderBy([(r) => OrderingTerm.asc(r.id)])).get();
+
+  Future<int> addCategoryRule(CategoryRulesCompanion entry) =>
+      into(categoryRules).insert(entry);
+
+  Future<int> deleteCategoryRule(int id) =>
+      (delete(categoryRules)..where((r) => r.id.equals(id))).go();
+
+  /// Replaces every rule of [categoryId] with [rules] in one transaction.
+  Future<void> replaceCategoryRules(
+    int categoryId,
+    List<CategoryRulesCompanion> rules,
+  ) =>
+      transaction(() async {
+        await (delete(categoryRules)
+              ..where((r) => r.categoryId.equals(categoryId)))
+            .go();
+        for (final r in rules) {
+          await into(categoryRules)
+              .insert(r.copyWith(id: const Value.absent(), categoryId: Value(categoryId)));
+        }
+      });
+
+  Stream<List<CategoryExclusion>> watchCategoryExclusions() =>
+      select(categoryExclusions).watch();
+
+  Future<List<CategoryExclusion>> allCategoryExclusions() =>
+      select(categoryExclusions).get();
+
+  /// Removes one transaction from [categoryId] without touching its rules.
+  Future<void> excludeFromCategory(int categoryId, int transactionId) =>
+      into(categoryExclusions).insert(
+        CategoryExclusionsCompanion.insert(
+          categoryId: categoryId,
+          transactionId: transactionId,
+        ),
+        mode: InsertMode.insertOrIgnore,
+      );
+
+  /// Lets a previously removed transaction back into [categoryId].
+  Future<void> restoreToCategory(int categoryId, int transactionId) =>
+      (delete(categoryExclusions)
+            ..where((e) =>
+                e.categoryId.equals(categoryId) &
+                e.transactionId.equals(transactionId)))
+          .go();
 
   // ---- Goals -------------------------------------------------------------
   Stream<List<Goal>> watchGoals() =>

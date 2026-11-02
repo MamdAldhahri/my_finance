@@ -4,13 +4,13 @@ import 'package:flutter/material.dart';
 import '../database/database.dart';
 import '../format.dart';
 import '../main.dart';
-import '../services/derive.dart';
-import '../services/sms_import.dart';
+import '../services/category_matching.dart';
 import '../theme.dart';
+import '../widgets/category_resolver_builder.dart';
 import '../widgets/ui.dart';
 
-/// Categories tab: define spending buckets from bank chats + shop names, and
-/// see this month's spend per category.
+/// Categories tab: spending buckets filled automatically by rules picked from
+/// example SMS (like fixed debts), with this month's spend per category.
 class CategoriesScreen extends StatefulWidget {
   const CategoriesScreen({super.key});
 
@@ -18,99 +18,245 @@ class CategoriesScreen extends StatefulWidget {
   State<CategoriesScreen> createState() => _CategoriesScreenState();
 }
 
-enum _Step { list, name, senders }
+/// An editable copy of a [CategoryRule] while the editor is open.
+class _DraftRule {
+  _DraftRule({
+    required this.sender,
+    required this.counterparty,
+    required this.exact,
+    required this.matchAmount,
+    required this.amount,
+    required this.isCredit,
+  });
+
+  factory _DraftRule.of(CategoryRule r) => _DraftRule(
+        sender: r.sender,
+        counterparty: r.counterparty,
+        exact: r.exact,
+        matchAmount: r.matchAmount,
+        amount: r.amount,
+        isCredit: r.isCredit,
+      );
+
+  factory _DraftRule.fromCompanion(CategoryRulesCompanion c) => _DraftRule(
+        sender: c.sender.present ? c.sender.value : '',
+        counterparty: c.counterparty.value,
+        exact: c.exact.present ? c.exact.value : true,
+        matchAmount: c.matchAmount.present ? c.matchAmount.value : false,
+        amount: c.amount.present ? c.amount.value : 0,
+        isCredit: c.isCredit.present ? c.isCredit.value : null,
+      );
+
+  final String sender;
+  final String counterparty;
+  final bool exact;
+  bool matchAmount;
+  final double amount;
+  final bool? isCredit;
+
+  /// Rules with the same key are duplicates (across categories, a clean move).
+  String get key => [
+        sender,
+        counterparty.trim().toLowerCase(),
+        exact,
+        matchAmount,
+        if (matchAmount) amount.toStringAsFixed(3),
+        isCredit,
+      ].join('|');
+
+  bool get canFixAmount => exact && amount > 0;
+
+  CategoryRule asRule(int id, int categoryId) => CategoryRule(
+        id: id,
+        categoryId: categoryId,
+        sender: sender,
+        counterparty: counterparty,
+        exact: exact,
+        matchAmount: matchAmount,
+        amount: amount,
+        isCredit: isCredit,
+      );
+
+  CategoryRulesCompanion toCompanion(int categoryId) =>
+      CategoryRulesCompanion.insert(
+        categoryId: categoryId,
+        sender: Value(sender),
+        counterparty: counterparty,
+        exact: Value(exact),
+        matchAmount: Value(matchAmount),
+        amount: Value(amount),
+        isCredit: Value(isCredit),
+      );
+}
+
+/// Stand-in id for a category that isn't saved yet (preview only).
+const _newCategoryId = -1;
+
+/// Draft rules sort after every saved rule on ties, as they will once saved.
+const _draftRuleIdBase = 1 << 40;
 
 class _CategoriesScreenState extends State<CategoriesScreen> {
-  _Step _step = _Step.list;
+  bool _editing = false;
 
   /// How many months back from the most recent activity to show (0 = latest).
   int _monthOffset = 0;
 
   final _name = TextEditingController();
-  int? _editingId;
-  final Set<String> _senderIds = {};
-  final Map<String, TextEditingController> _shopControllers = {};
+  final _shopName = TextEditingController();
+  Category? _existing;
+  final List<_DraftRule> _rules = [];
 
-  Future<List<SmsSender>>? _confirmedSenders;
+  /// Transactions removed from this category (one at a time).
+  final Set<int> _removed = {};
+
+  /// SMS without a reusable name (e.g. "Payment") picked as examples: these
+  /// are filed into the category one by one on save.
+  final Set<int> _pinned = {};
+
+  // Created once so typing in the editor doesn't resubscribe (and flash).
+  final _categoryStream = db.watchCategories();
+  final _ruleStream = db.watchCategoryRules();
+  final _exclusionStream = db.watchCategoryExclusions();
+  final _paymentStream = db.watchDebtPayments();
+  final _txStream = db.watchTransactions();
 
   @override
   void dispose() {
     _name.dispose();
-    for (final c in _shopControllers.values) {
-      c.dispose();
-    }
+    _shopName.dispose();
     super.dispose();
   }
 
-  void _startAdd() {
+  int get _draftId => _existing?.id ?? _newCategoryId;
+
+  Future<void> _startAdd() async {
     _reset();
-    setState(() => _step = _Step.name);
+    setState(() => _editing = true);
   }
 
-  void _startEdit(Category c) {
+  Future<void> _startEdit(Category c) async {
     _reset();
-    final rules = CategoryRules.of(c);
-    _editingId = c.id;
-    _name.text = c.name;
-    _senderIds.addAll(rules.senderIds);
-    for (final id in rules.senderIds) {
-      _shopControllers[id] =
-          TextEditingController(text: rules.shopNames[id] ?? '');
-    }
-    _confirmedSenders = _loadConfirmed();
-    setState(() => _step = _Step.senders);
+    final rules = await db.allCategoryRules();
+    final exclusions = await db.allCategoryExclusions();
+    if (!mounted) return;
+    setState(() {
+      _existing = c;
+      _name.text = c.name;
+      _rules.addAll(
+          rules.where((r) => r.categoryId == c.id).map(_DraftRule.of));
+      _removed.addAll(exclusions
+          .where((e) => e.categoryId == c.id)
+          .map((e) => e.transactionId));
+      _editing = true;
+    });
   }
 
   void _reset() {
-    _editingId = null;
+    _existing = null;
     _name.clear();
-    _senderIds.clear();
-    for (final c in _shopControllers.values) {
-      c.dispose();
-    }
-    _shopControllers.clear();
+    _shopName.clear();
+    _rules.clear();
+    _removed.clear();
+    _pinned.clear();
   }
 
   void _cancel() {
     _reset();
-    setState(() => _step = _Step.list);
+    setState(() => _editing = false);
   }
 
-  Future<List<SmsSender>> _loadConfirmed() async {
-    final ids = await db.getBankSenders();
-    final inbox = await smsImport.inboxSenders();
-    final byAddress = {for (final s in inbox) s.address: s};
-    return [
-      for (final id in ids)
-        byAddress[id] ?? SmsSender(address: id, sample: '', count: 0),
-    ];
+  void _toast(String text) => ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(text)));
+
+  Future<void> _pickSms() async {
+    final picked = await showModalBottomSheet<List<Transaction>>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: AppColors.screen,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
+        child: const _CategorySmsPicker(),
+      ),
+    );
+    if (picked == null || picked.isEmpty) return;
+    setState(() {
+      for (final t in picked) {
+        _removed.remove(t.id);
+        if (!hasReusableName(t)) {
+          _pinned.add(t.id);
+          continue;
+        }
+        final rule = _DraftRule.fromCompanion(ruleFromTransaction(t));
+        if (_rules.every((r) => r.key != rule.key)) _rules.add(rule);
+      }
+    });
+  }
+
+  void _addShopName() {
+    final name = _shopName.text.trim();
+    if (name.isEmpty) return;
+    final rule = _DraftRule.fromCompanion(ruleFromShopName(name));
+    setState(() {
+      if (_rules.every((r) => r.key != rule.key)) _rules.add(rule);
+      _shopName.clear();
+    });
   }
 
   Future<void> _saveCategory() async {
-    final shopNames = <String, String>{
-      for (final id in _senderIds) id: _shopControllers[id]?.text.trim() ?? '',
-    };
-    final (sendersJson, shopsJson) =
-        CategoryRules.encode(_senderIds.toList(), shopNames);
-
-    if (_editingId != null) {
-      final existing =
-          (await db.allCategories()).firstWhere((c) => c.id == _editingId);
-      await db.updateCategory(existing.copyWith(
-        name: _name.text.trim(),
-        senderIds: sendersJson,
-        shopNames: shopsJson,
-      ));
+    final name = _name.text.trim();
+    if (name.isEmpty) {
+      _toast('Give the category a name first.');
+      return;
+    }
+    final int id;
+    final existing = _existing;
+    if (existing != null) {
+      id = existing.id;
+      await db.updateCategory(existing.copyWith(name: name));
     } else {
       final count = (await db.allCategories()).length;
       final color =
           '#${AppColors.paletteAt(count).toARGB32().toRadixString(16).substring(2).toUpperCase()}';
-      await db.addCategory(CategoriesCompanion.insert(
-        name: _name.text.trim(),
+      id = await db.addCategory(CategoriesCompanion.insert(
+        name: name,
         color: Value(color),
-        senderIds: Value(sendersJson),
-        shopNames: Value(shopsJson),
       ));
+    }
+
+    // A rule lives in one category: picking the same SMS rule here moves it.
+    final keys = {for (final r in _rules) r.key};
+    for (final r in await db.allCategoryRules()) {
+      if (r.categoryId != id && keys.contains(_DraftRule.of(r).key)) {
+        await db.deleteCategoryRule(r.id);
+      }
+    }
+    await db.replaceCategoryRules(
+        id, [for (final r in _rules) r.toCompanion(id)]);
+
+    final before = {
+      for (final e in await db.allCategoryExclusions())
+        if (e.categoryId == id) e.transactionId,
+    };
+    for (final txId in _removed.difference(before)) {
+      await db.excludeFromCategory(id, txId);
+    }
+    for (final txId in before.difference(_removed)) {
+      await db.restoreToCategory(id, txId);
+    }
+    for (final txId in _pinned) {
+      await db.setTransactionCategory(txId, id);
+    }
+    for (final txId in _removed) {
+      final t = await db.transactionById(txId);
+      if (t != null && t.categoryId == id) {
+        await db.setTransactionCategory(txId, null);
+      }
     }
     _cancel();
   }
@@ -119,32 +265,33 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
   Widget build(BuildContext context) {
     return SafeArea(
       bottom: false,
-      child: switch (_step) {
-        _Step.list => _listView(),
-        _Step.name => _nameStep(),
-        _Step.senders => _sendersStep(),
-      },
+      child: _editing ? _editor() : _listView(),
     );
   }
 
   // ---- List view ---------------------------------------------------------
   Widget _listView() {
-    return StreamBuilder<List<Category>>(
-      stream: db.watchCategories(),
-      builder: (context, catSnap) {
-        final categories = catSnap.data ?? const [];
-        return StreamBuilder<List<Transaction>>(
-          stream: db.watchTransactions(),
-          builder: (context, txSnap) {
-            final txns = txSnap.data ?? const [];
-            return _CategoriesList(
-              categories: categories,
-              txns: txns,
-              monthOffset: _monthOffset,
-              onStepMonth: (delta) =>
-                  setState(() => _monthOffset = (_monthOffset + delta).clamp(0, 120)),
-              onAdd: _startAdd,
-              onEdit: _startEdit,
+    return CategoryResolverBuilder(
+      builder: (context, categories, resolver) {
+        return StreamBuilder<List<CategoryRule>>(
+          stream: _ruleStream,
+          builder: (context, ruleSnap) {
+            return StreamBuilder<List<Transaction>>(
+              stream: _txStream,
+              builder: (context, txSnap) {
+                final txns = txSnap.data ?? const [];
+                return _CategoriesList(
+                  categories: categories,
+                  rules: ruleSnap.data ?? const [],
+                  resolver: resolver,
+                  txns: txns,
+                  monthOffset: _monthOffset,
+                  onStepMonth: (delta) => setState(() =>
+                      _monthOffset = (_monthOffset + delta).clamp(0, 120)),
+                  onAdd: _startAdd,
+                  onEdit: _startEdit,
+                );
+              },
             );
           },
         );
@@ -152,123 +299,225 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     );
   }
 
-  // ---- Name step ---------------------------------------------------------
-  Widget _nameStep() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _FlowHeader(title: 'New category', onBack: _cancel),
-          const SizedBox(height: 22),
-          const Text('Category name',
-              style: TextStyle(fontSize: 12.5, color: AppColors.muted)),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _name,
-            autofocus: true,
-            textCapitalization: TextCapitalization.sentences,
-            decoration: _decoration('e.g. Groceries'),
-            onSubmitted: (_) => _nameNext(),
+  // ---- Editor ------------------------------------------------------------
+  Widget _editor() {
+    return StreamBuilder<List<CategoryRule>>(
+      stream: _ruleStream,
+      builder: (context, ruleSnap) => StreamBuilder<List<CategoryExclusion>>(
+        stream: _exclusionStream,
+        builder: (context, exclSnap) => StreamBuilder<List<Category>>(
+          stream: _categoryStream,
+          builder: (context, catSnap) => StreamBuilder<List<DebtPayment>>(
+            stream: _paymentStream,
+            builder: (context, paySnap) => StreamBuilder<List<Transaction>>(
+              stream: _txStream,
+              builder: (context, txSnap) => _editorBody(
+                categories: catSnap.data ?? const [],
+                rules: ruleSnap.data ?? const [],
+                exclusions: exclSnap.data ?? const [],
+                payments: paySnap.data ?? const [],
+                txns: txSnap.data ?? const [],
+              ),
+            ),
           ),
-          const SizedBox(height: 20),
-          _GreenButton(label: 'Next', onTap: _nameNext),
-        ],
+        ),
       ),
     );
   }
 
-  void _nameNext() {
-    if (_name.text.trim().isEmpty) return;
-    _confirmedSenders = _loadConfirmed();
-    setState(() => _step = _Step.senders);
-  }
+  Widget _editorBody({
+    required List<Category> categories,
+    required List<CategoryRule> rules,
+    required List<CategoryExclusion> exclusions,
+    required List<DebtPayment> payments,
+    required List<Transaction> txns,
+  }) {
+    final draftId = _draftId;
+    // Preview with the draft in place of this category's saved state.
+    final resolver = CategoryResolver(
+      categories: [
+        ...categories.where((c) => c.id != draftId),
+        Category(
+          id: draftId,
+          name: _name.text,
+          color: '#000000',
+          senderIds: '[]',
+          shopNames: '{}',
+        ),
+      ],
+      rules: [
+        ...rules.where((r) => r.categoryId != draftId),
+        for (var i = 0; i < _rules.length; i++)
+          _rules[i].asRule(_draftRuleIdBase + i, draftId),
+      ],
+      exclusions: [
+        ...exclusions.where((e) => e.categoryId != draftId),
+        for (final txId in _removed)
+          CategoryExclusion(id: 0, categoryId: draftId, transactionId: txId),
+      ],
+      debtPayments: payments,
+    );
+    final matched = <Transaction>[];
+    final removed = <Transaction>[];
+    for (final t in txns) {
+      if (_removed.contains(t.id)) {
+        removed.add(t);
+      } else if (_pinned.contains(t.id) ||
+          resolver.categoryIdFor(t) == draftId) {
+        matched.add(t);
+      }
+    }
+    const shown = 60;
 
-  // ---- Senders step ------------------------------------------------------
-  Widget _sendersStep() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _FlowHeader(
-            title: _name.text.trim().isEmpty ? 'Category' : _name.text.trim(),
-            onBack: () {
-              if (_editingId != null) {
-                _cancel();
-              } else {
-                setState(() => _step = _Step.name);
-              }
-            },
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      children: [
+        _FlowHeader(
+          title: _existing == null ? 'New category' : 'Edit category',
+          onBack: _cancel,
+        ),
+        const SizedBox(height: 18),
+        const Text('Category name',
+            style: TextStyle(fontSize: 12.5, color: AppColors.muted)),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _name,
+          autofocus: _existing == null,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: _decoration('e.g. Groceries'),
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 20),
+        const Text('Matching SMS',
+            style: TextStyle(
+                fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.ink)),
+        const SizedBox(height: 4),
+        const Text(
+          'Pick example SMS. Every past and future SMS to the same shop or '
+          'person files here automatically. Turn on "Only this amount" when '
+          'the same person gets money for different things.',
+          style: TextStyle(fontSize: 12, color: AppColors.muted, height: 1.4),
+        ),
+        const SizedBox(height: 12),
+        if (_rules.isNotEmpty)
+          AppCard(
+            padding: EdgeInsets.zero,
+            child: Column(
+              children: [
+                for (var i = 0; i < _rules.length; i++)
+                  _RuleRow(
+                    rule: _rules[i],
+                    showDivider: i != _rules.length - 1,
+                    onToggleAmount: () => setState(
+                        () => _rules[i].matchAmount = !_rules[i].matchAmount),
+                    onDelete: () => setState(() => _rules.removeAt(i)),
+                  ),
+              ],
+            ),
           ),
-          const SizedBox(height: 6),
-          const Text('Pick from your confirmed bank chats.',
-              style: TextStyle(fontSize: 12.5, color: AppColors.muted)),
-          const SizedBox(height: 14),
-          Expanded(
-            child: FutureBuilder<List<SmsSender>>(
-              future: _confirmedSenders,
-              builder: (context, snap) {
-                if (snap.connectionState != ConnectionState.done) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                final senders = snap.data ?? const [];
-                if (senders.isEmpty) {
-                  return const EmptyHint(
-                    'No confirmed bank chats yet. Open the Transactions tab, '
-                    'tap the gear, and pick your bank first.',
-                  );
-                }
-                return ListView(
-                  children: [
-                    AppCard(
-                      padding: EdgeInsets.zero,
-                      child: Column(
-                        children: [
-                          for (var i = 0; i < senders.length; i++)
-                            _DraftSenderTile(
-                              sender: senders[i],
-                              checked: _senderIds.contains(senders[i].address),
-                              controller:
-                                  _shopControllers[senders[i].address],
-                              showDivider: i != senders.length - 1,
-                              onToggle: () => _toggleSender(senders[i].address),
-                            ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _GreenButton(label: 'Save', onTap: _saveCategory),
-                    if (_editingId != null) ...[
-                      const SizedBox(height: 10),
-                      TextButton(
-                        onPressed: () async {
-                          await db.deleteCategory(_editingId!);
-                          _cancel();
-                        },
-                        child: const Text('Delete category',
-                            style: TextStyle(color: AppColors.terracotta)),
-                      ),
-                    ],
-                  ],
-                );
-              },
+        if (_rules.isNotEmpty) const SizedBox(height: 10),
+        _OutlineAction(
+          icon: Icons.sms_outlined,
+          label: 'Pick example SMS',
+          onTap: _pickSms,
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _shopName,
+                decoration: _decoration('Or type a shop name'),
+                onSubmitted: (_) => _addShopName(),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton.filled(
+              onPressed: _addShopName,
+              style: IconButton.styleFrom(backgroundColor: AppColors.green),
+              icon: const Icon(Icons.add, color: Colors.white),
+            ),
+          ],
+        ),
+        const SizedBox(height: 22),
+        Text('In this category (${matched.length})',
+            style: const TextStyle(
+                fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.ink)),
+        const SizedBox(height: 4),
+        const Text(
+          'Tap ✕ to take out just that one transaction. SMS counted as a debt '
+          'payment stay with the debt.',
+          style: TextStyle(fontSize: 12, color: AppColors.muted, height: 1.4),
+        ),
+        const SizedBox(height: 10),
+        if (matched.isEmpty)
+          const EmptyHint('Nothing matches yet.')
+        else
+          AppCard(
+            padding: EdgeInsets.zero,
+            child: Column(
+              children: [
+                for (var i = 0; i < matched.length && i < shown; i++)
+                  _TxPreviewRow(
+                    txn: matched[i],
+                    showDivider: i != matched.length - 1 && i != shown - 1,
+                    actionIcon: Icons.close,
+                    actionTooltip: 'Remove from this category',
+                    onAction: () => setState(() {
+                      _pinned.remove(matched[i].id);
+                      _removed.add(matched[i].id);
+                    }),
+                  ),
+                if (matched.length > shown)
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text('and ${matched.length - shown} more',
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.faint)),
+                  ),
+              ],
+            ),
+          ),
+        if (removed.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          Text('Removed (${removed.length})',
+              style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.ink)),
+          const SizedBox(height: 10),
+          AppCard(
+            padding: EdgeInsets.zero,
+            child: Column(
+              children: [
+                for (var i = 0; i < removed.length; i++)
+                  _TxPreviewRow(
+                    txn: removed[i],
+                    showDivider: i != removed.length - 1,
+                    actionIcon: Icons.undo,
+                    actionTooltip: 'Put back',
+                    onAction: () =>
+                        setState(() => _removed.remove(removed[i].id)),
+                  ),
+              ],
             ),
           ),
         ],
-      ),
+        const SizedBox(height: 20),
+        _GreenButton(label: 'Save', onTap: _saveCategory),
+        if (_existing != null) ...[
+          const SizedBox(height: 10),
+          TextButton(
+            onPressed: () async {
+              await db.deleteCategory(_existing!.id);
+              _cancel();
+            },
+            child: const Text('Delete category',
+                style: TextStyle(color: AppColors.terracotta)),
+          ),
+        ],
+      ],
     );
-  }
-
-  void _toggleSender(String id) {
-    setState(() {
-      if (_senderIds.contains(id)) {
-        _senderIds.remove(id);
-      } else {
-        _senderIds.add(id);
-        _shopControllers.putIfAbsent(id, () => TextEditingController());
-      }
-    });
   }
 
   InputDecoration _decoration(String hint) => InputDecoration(
@@ -293,6 +542,8 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
 class _CategoriesList extends StatelessWidget {
   const _CategoriesList({
     required this.categories,
+    required this.rules,
+    required this.resolver,
     required this.txns,
     required this.monthOffset,
     required this.onStepMonth,
@@ -301,6 +552,8 @@ class _CategoriesList extends StatelessWidget {
   });
 
   final List<Category> categories;
+  final List<CategoryRule> rules;
+  final CategoryResolver resolver;
   final List<Transaction> txns;
   final int monthOffset;
   final ValueChanged<int> onStepMonth;
@@ -324,7 +577,7 @@ class _CategoriesList extends StatelessWidget {
     for (final t in txns) {
       if (t.isCredit) continue;
       if (t.date.year != period.year || t.date.month != period.month) continue;
-      final id = categoryIdFor(t, categories);
+      final id = resolver.categoryIdFor(t);
       if (id != null) spent[id] = (spent[id] ?? 0) + t.amount;
     }
     final total = spent.values.fold<double>(0, (s, v) => s + v);
@@ -396,12 +649,16 @@ class _CategoriesList extends StatelessWidget {
         const SizedBox(height: 18),
         if (categories.isEmpty)
           const EmptyHint(
-            'No categories yet. Tap + to create one from your bank chats.',
+            'No categories yet. Tap + and pick example SMS to create one.',
           )
         else
           for (final c in categories) ...[
             _CategoryCard(
               category: c,
+              rules: [
+                for (final r in rules)
+                  if (r.categoryId == c.id) r,
+              ],
               spent: spent[c.id] ?? 0,
               sharePct: total <= 0 ? 0 : ((spent[c.id] ?? 0) / total * 100),
               onTap: () => onEdit(c),
@@ -416,12 +673,14 @@ class _CategoriesList extends StatelessWidget {
 class _CategoryCard extends StatelessWidget {
   const _CategoryCard({
     required this.category,
+    required this.rules,
     required this.spent,
     required this.sharePct,
     required this.onTap,
   });
 
   final Category category;
+  final List<CategoryRule> rules;
   final double spent;
   final double sharePct;
   final VoidCallback onTap;
@@ -429,11 +688,7 @@ class _CategoryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = hexColor(category.color);
-    final rules = CategoryRules.of(category);
-    final shops = rules.senderIds
-        .map((id) => rules.shopNames[id] ?? '')
-        .where((s) => s.trim().isNotEmpty)
-        .join(', ');
+    final shops = {for (final r in rules) r.counterparty.trim()}.join(', ');
 
     return AppCard(
       onTap: onTap,
@@ -465,7 +720,7 @@ class _CategoryCard extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  shops.isEmpty ? 'No shops added yet' : shops,
+                  shops.isEmpty ? 'No SMS picked yet' : shops,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 12, color: AppColors.muted),
@@ -475,122 +730,6 @@ class _CategoryCard extends StatelessWidget {
                   style: TextStyle(fontSize: 12, color: AppColors.faint)),
             ],
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DraftSenderTile extends StatelessWidget {
-  const _DraftSenderTile({
-    required this.sender,
-    required this.checked,
-    required this.controller,
-    required this.onToggle,
-    required this.showDivider,
-  });
-
-  final SmsSender sender;
-  final bool checked;
-  final TextEditingController? controller;
-  final VoidCallback onToggle;
-  final bool showDivider;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        border: showDivider
-            ? const Border(bottom: BorderSide(color: AppColors.cardBorder))
-            : null,
-      ),
-      child: Column(
-        children: [
-          InkWell(
-            onTap: onToggle,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(sender.address,
-                            style: const TextStyle(
-                                fontSize: 14.5,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.ink)),
-                        if (sender.sample.isNotEmpty) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            sender.sample,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                fontSize: 12.5,
-                                color: AppColors.muted,
-                                height: 1.35),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Container(
-                    width: 22,
-                    height: 22,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: checked ? AppColors.green : Colors.white,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                        color:
-                            checked ? AppColors.green : const Color(0x401E2E2A),
-                        width: checked ? 1 : 1.5,
-                      ),
-                    ),
-                    child: checked
-                        ? const Icon(Icons.check, size: 14, color: Colors.white)
-                        : null,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (checked)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Shop name(s) from this chat',
-                      style:
-                          TextStyle(fontSize: 11.5, color: AppColors.muted)),
-                  const SizedBox(height: 6),
-                  TextField(
-                    controller: controller,
-                    decoration: InputDecoration(
-                      hintText: 'e.g. Al Fair Grocery, Karak & bites',
-                      isDense: true,
-                      filled: true,
-                      fillColor: AppColors.screen,
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 9),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: Color(0x261E2E2A)),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: Color(0x261E2E2A)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
         ],
       ),
     );
@@ -707,6 +846,341 @@ class EmptyHint extends StatelessWidget {
         text,
         textAlign: TextAlign.center,
         style: const TextStyle(fontSize: 13, color: AppColors.faint),
+      ),
+    );
+  }
+}
+
+/// One rule in the editor: who it matches, and the "any amount" toggle.
+class _RuleRow extends StatelessWidget {
+  const _RuleRow({
+    required this.rule,
+    required this.showDivider,
+    required this.onToggleAmount,
+    required this.onDelete,
+  });
+
+  final _DraftRule rule;
+  final bool showDivider;
+  final VoidCallback onToggleAmount;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final details = [
+      rule.sender.isEmpty ? 'Any bank' : rule.sender,
+      if (rule.isCredit == true) 'money in',
+      if (rule.isCredit == false) 'money out',
+      if (!rule.exact) 'name contains',
+    ].join(' · ');
+    return Container(
+      decoration: BoxDecoration(
+        border: showDivider
+            ? const Border(bottom: BorderSide(color: AppColors.cardBorder))
+            : null,
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 10, 4, 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(rule.counterparty,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.ink)),
+                const SizedBox(height: 2),
+                Text(details,
+                    style:
+                        const TextStyle(fontSize: 11.5, color: AppColors.muted)),
+                if (rule.canFixAmount) ...[
+                  const SizedBox(height: 6),
+                  InkWell(
+                    onTap: onToggleAmount,
+                    borderRadius: BorderRadius.circular(100),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: rule.matchAmount
+                            ? AppColors.green
+                            : AppColors.screen,
+                        borderRadius: BorderRadius.circular(100),
+                        border: Border.all(
+                            color: rule.matchAmount
+                                ? AppColors.green
+                                : const Color(0x261E2E2A)),
+                      ),
+                      child: Text(
+                        rule.matchAmount
+                            ? 'Only ${money(rule.amount)}'
+                            : 'Any amount · tap for only ${money(rule.amount)}',
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: rule.matchAmount
+                                ? Colors.white
+                                : AppColors.ink),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Delete rule',
+            onPressed: onDelete,
+            icon: const Icon(Icons.close, size: 18, color: AppColors.faint),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A transaction in the editor's preview, with one action (remove / undo).
+class _TxPreviewRow extends StatelessWidget {
+  const _TxPreviewRow({
+    required this.txn,
+    required this.showDivider,
+    required this.actionIcon,
+    required this.actionTooltip,
+    required this.onAction,
+  });
+
+  final Transaction txn;
+  final bool showDivider;
+  final IconData actionIcon;
+  final String actionTooltip;
+  final VoidCallback onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        border: showDivider
+            ? const Border(bottom: BorderSide(color: AppColors.cardBorder))
+            : null,
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 6, 4, 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  txn.description.isEmpty ? 'Payment' : txn.description,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.ink),
+                ),
+                Text(
+                  [
+                    shortDate(txn.date),
+                    if (txn.card.isNotEmpty) '••••${txn.card}',
+                  ].join(' · '),
+                  style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                ),
+              ],
+            ),
+          ),
+          Text('${txn.isCredit ? '+' : ''}${money(txn.amount)}',
+              style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.ink)),
+          IconButton(
+            tooltip: actionTooltip,
+            onPressed: onAction,
+            icon: Icon(actionIcon, size: 18, color: AppColors.faint),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OutlineAction extends StatelessWidget {
+  const _OutlineAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(100),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 13),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(color: const Color(0x261E2E2A)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 18, color: AppColors.green),
+            const SizedBox(width: 8),
+            Text(label,
+                style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Lets the user tick example bank SMS for a category, newest first. SMS
+/// already counted as a debt payment are left out (the debt owns them).
+class _CategorySmsPicker extends StatefulWidget {
+  const _CategorySmsPicker();
+
+  @override
+  State<_CategorySmsPicker> createState() => _CategorySmsPickerState();
+}
+
+class _CategorySmsPickerState extends State<_CategorySmsPicker> {
+  final Set<int> _selected = {};
+  String _query = '';
+  List<Transaction>? _txns;
+
+  @override
+  void initState() {
+    super.initState();
+    () async {
+      final all = await db.allTransactions();
+      final resolver = await CategoryResolver.load(db);
+      if (!mounted) return;
+      setState(() {
+        _txns = all
+            .where((t) => t.source == TxSource.sms)
+            .where((t) => !resolver.isDebtPayment(t))
+            .toList();
+      });
+    }();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final q = _query.trim().toLowerCase();
+    final visible = (_txns ?? const <Transaction>[])
+        .where((t) =>
+            q.isEmpty ||
+            t.description.toLowerCase().contains(q) ||
+            amountText(t.amount).contains(q))
+        .toList();
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+          20, 0, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Pick example SMS',
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.ink)),
+          const SizedBox(height: 4),
+          const Text(
+              'One per shop or person is enough; the rest are found for you.',
+              style: TextStyle(fontSize: 12, color: AppColors.muted)),
+          const SizedBox(height: 10),
+          TextField(
+            onChanged: (v) => setState(() => _query = v),
+            decoration: InputDecoration(
+              hintText: 'Search name or amount',
+              prefixIcon: const Icon(Icons.search, size: 18),
+              isDense: true,
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Color(0x261E2E2A)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Color(0x261E2E2A)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Flexible(
+            child: _txns == null
+                ? const Center(child: CircularProgressIndicator())
+                : visible.isEmpty
+                    ? const EmptyHint('No matching bank SMS.')
+                    : ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: visible.length,
+                        itemBuilder: (context, i) {
+                          final t = visible[i];
+                          return CheckboxListTile(
+                            value: _selected.contains(t.id),
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            controlAffinity: ListTileControlAffinity.leading,
+                            activeColor: AppColors.green,
+                            onChanged: (v) => setState(() {
+                              v == true
+                                  ? _selected.add(t.id)
+                                  : _selected.remove(t.id);
+                            }),
+                            title: Text(
+                              t.description.isEmpty ? 'Payment' : t.description,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 13, fontWeight: FontWeight.w600),
+                            ),
+                            subtitle: Text(
+                              [
+                                shortDate(t.date),
+                                if (t.card.isNotEmpty) '••••${t.card}',
+                              ].join(' · '),
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                            secondary: Text(
+                                '${t.isCredit ? '+' : ''}${money(t.amount)}',
+                                style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700)),
+                          );
+                        },
+                      ),
+          ),
+          const SizedBox(height: 12),
+          _GreenButton(
+            label: _selected.isEmpty ? 'Done' : 'Use ${_selected.length} SMS',
+            onTap: () {
+              final all = _txns ?? const <Transaction>[];
+              Navigator.pop(
+                context,
+                all.where((t) => _selected.contains(t.id)).toList(),
+              );
+            },
+          ),
+        ],
       ),
     );
   }
