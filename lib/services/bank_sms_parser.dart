@@ -70,6 +70,10 @@ const _debitWords = [
   'transferred to',
   'sent to',
   'you have sent',
+  'تم خصم',
+  'بإستخدام بطاقة الخصم المباشر',
+  ' لقد قمت بإرسال',
+  'من حسابك',
 ];
 
 /// Phrases that mark a message as marketing / promotional rather than a real
@@ -78,8 +82,10 @@ const _debitWords = [
 /// deliberately narrow (things a genuine debit/credit alert never says) so we
 /// don't discard real transactions — add to this list as you spot new promos.
 const _marketingWords = [
+  // NOTE: do NOT add "dear customer" / "عزيزي الزبون" here — this bank opens
+  // BOTH promos and real transaction alerts with that greeting, so it would
+  // reject genuine transactions.
   // Confirmed by the user for their bank: a real alert never contains these.
-  'dear customer',
   'prize',
   'offer',
   'pay bills',
@@ -156,6 +162,14 @@ final _cardPattern = RegExp(
   caseSensitive: false,
 );
 
+/// Arabic counterpart: the account/card token after حساب ("account") or
+/// بطاقة ("card"), e.g. "من حسابك 0304XXXXXXXX0017".
+final _cardArPattern = RegExp(
+  r'(?:حساب|بطاقة)[^0-9Xx*]{0,12}?([0-9Xx*]{4,})',
+  caseSensitive: false,
+  unicode: true,
+);
+
 /// Common date shapes: 05/08/2026, 5-8-26, 05.08.2026, 2026-08-05.
 final _datePattern = RegExp(
   r'(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})'
@@ -166,9 +180,22 @@ final _datePattern = RegExp(
 /// stopping at the next clause (date, "on", balance, punctuation).
 final _merchantPattern = RegExp(
   r'\b(?:at|to|from)\s+([A-Za-z0-9][A-Za-z0-9 &._\-]{1,40}?)'
-  r'(?=\s+(?:on|dated|avail|available|bal|ref|a/?c|acct|account)\b'
+  r'(?=\s+(?:on|dated|avail|available|bal|ref|from|to|using|via|txn|'
+  r'a/?c|acct|account)\b'
   r'|[.,;\n]|\s+\d|\s+\S*\d{4,}|$)',
   caseSensitive: false,
+);
+
+/// Arabic counterpart: the recipient/merchant after إلى ("to") or لدى ("at"),
+/// e.g. "إلى SHU****LAH من حسابك …" → "SHU****LAH". Stops at the next Arabic
+/// clause word (من "from", باستخدام "using", رقم "number", رصيد "balance", …)
+/// or punctuation.
+final _merchantArPattern = RegExp(
+  r'(?:إلى|لدى)\s+(\S.{0,40}?)'
+  r'(?=\s+(?:من|في|باستخدام|بإستخدام|رقم|رصيد|بتاريخ|عبر|حساب)'
+  r'|[.,;\n]|$)',
+  caseSensitive: false,
+  unicode: true,
 );
 
 /// Parses [body]; returns null when it is not a recognisable bank alert.
@@ -215,13 +242,18 @@ double? _extractBalance(String text) {
     if (value == null || value < 0) continue;
     final start = m.start < 20 ? 0 : m.start - 20;
     final before = text.substring(start, m.start).toLowerCase();
-    if (before.contains('bal') || before.contains('available')) balance = value;
+    if (before.contains('bal') ||
+        before.contains('available') ||
+        before.contains('رصيد')) {
+      balance = value;
+    }
   }
   return balance;
 }
 
 String _extractCard(String text) {
-  final token = _cardPattern.firstMatch(text)?.group(1);
+  final token = (_cardPattern.firstMatch(text) ?? _cardArPattern.firstMatch(text))
+      ?.group(1);
   if (token == null) return '';
   // Keep only real digits (drop the X / * mask characters), then the last 4 —
   // that is the part that tells one card apart from another.
@@ -269,7 +301,11 @@ double? _extractAmount(String text) {
     // this is the balance figure, not the transaction — skip it.
     final start = m.start < 14 ? 0 : m.start - 14;
     final before = text.substring(start, m.start).toLowerCase();
-    if (before.contains('bal') || before.contains('available')) continue;
+    if (before.contains('bal') ||
+        before.contains('available') ||
+        before.contains('رصيد')) {
+      continue;
+    }
     return value;
   }
   // Everything looked like a balance? Fall back to the first amount so we still
@@ -302,7 +338,7 @@ DateTime? _extractDate(String text) {
 }
 
 String? _extractMerchant(String text) {
-  final m = _merchantPattern.firstMatch(text);
+  final m = _merchantPattern.firstMatch(text) ?? _merchantArPattern.firstMatch(text);
   final name = m?.group(1)?.trim();
   if (name == null || name.isEmpty) return null;
   // Drop trailing filler words the greedy stop might leave behind.

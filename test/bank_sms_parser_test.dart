@@ -80,6 +80,36 @@ void main() {
       expect(parseBankSms('OMR 20.000 withdrawn on 01/08/2026')?.card, '');
     });
 
+    test('English mobile-payment "You have sent" (starts with Dear Customer)',
+        () {
+      final r = parseBankSms(
+        'Dear Customer, You have sent OMR 5.000 to BRAHXXXXXXXXXXXXXOHAM from '
+        'your a/c 0304XXXXXXXX0017 on 08/08/2026 11:48:36 using Mobile Payment '
+        'services. Txn Id BMCT014934975382. Avl Bal OMR 677.414.',
+      );
+      expect(r, isNotNull); // "Dear Customer" must NOT reject a real txn
+      expect(r!.isCredit, isFalse);
+      expect(r.amount, 5.000);
+      expect(r.description, 'BRAHXXXXXXXXXXXXXOHAM'); // stops before "from"
+      expect(r.card, '0017');
+      expect(r.balanceAfter, 677.414);
+      expect(r.date, DateTime(2026, 8, 8));
+    });
+
+    test('Arabic "you sent" alert: merchant, account, balance', () {
+      final r = parseBankSms(
+        'عزيزي الزبون، لقد قمت بإرسال OMR 1.000 إلى SHU****LAH من حسابك '
+        '0304XXXXXXXX0017 باستخدام خدمات الدفع عبر الهاتف النقال/ المحفظة '
+        'الإلكترونية. رقم المعاملة BMCT014862618452. رصيدك الحالي هو OMR 711.441.',
+      );
+      expect(r, isNotNull);
+      expect(r!.isCredit, isFalse); // "قمت بإرسال" = money out
+      expect(r.amount, 1.000); // not the 711.441 balance
+      expect(r.description, 'SHU****LAH'); // recipient after إلى
+      expect(r.card, '0017'); // last 4 of حساب 0304…0017
+      expect(r.balanceAfter, 711.441); // after رصيدك الحالي
+    });
+
     test('non-transaction message returns null', () {
       expect(parseBankSms('Your OTP is 123456. Do not share it.'), isNull);
       expect(parseBankSms('Welcome to Bank Muscat mobile banking.'), isNull);
