@@ -121,6 +121,23 @@ void main() {
       expect(r.card, '0017');
     });
 
+    test('EMI and Arabic installment alerts are imported too', () {
+      final emi = parseBankSms(
+        'Your EMI of OMR 84.053 has been deducted from a/c XXXX0017.',
+      );
+      expect(emi, isNotNull);
+      expect(emi!.isCredit, isFalse);
+      expect(emi.amount, 84.053);
+
+      final arabic = parseBankSms(
+        'تم خصم قسط القرض OMR 84.053 من حسابك 0304XXXXXXXX0017',
+      );
+      expect(arabic, isNotNull);
+      expect(arabic!.isCredit, isFalse);
+      expect(arabic.amount, 84.053);
+      expect(arabic.card, '0017');
+    });
+
     test('non-transaction message returns null', () {
       expect(parseBankSms('Your OTP is 123456. Do not share it.'), isNull);
       expect(parseBankSms('Welcome to Bank Muscat mobile banking.'), isNull);

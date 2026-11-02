@@ -267,7 +267,7 @@ bool _matchesAny(String lower, List<String> words) =>
 /// True when [lower] looks like a marketing message. Purely alphabetic phrases
 /// (e.g. "draw", "offer") are matched as whole words so they don't fire inside
 /// unrelated words — "draw" must not match "withdrawn". Phrases containing
-/// symbols/spaces (URLs, "% off", " emi ") are matched as plain substrings.
+/// symbols/spaces (URLs, "% off") are matched as plain substrings.
 bool _looksLikeMarketing(String lower) {
   for (final raw in _marketingWords) {
     // Lowercase defensively so a capitalised list entry still matches the
