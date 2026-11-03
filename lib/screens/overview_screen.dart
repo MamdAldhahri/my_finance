@@ -275,7 +275,7 @@ class _BalanceCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 const Text(
-                  'vs last month',
+                  'vs before payday',
                   style: TextStyle(fontSize: 12, color: Colors.white54),
                 ),
               ],

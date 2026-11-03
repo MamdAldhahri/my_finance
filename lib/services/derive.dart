@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../database/database.dart';
 import '../theme.dart';
+import 'pay_cycle.dart';
 
 /// A bank account inferred from SMS: one per distinct account/card number,
 /// carrying the balance from that number's most recent alert.
@@ -59,13 +60,12 @@ List<Account> deriveAccounts(List<Transaction> txns) {
 double totalBalance(List<Transaction> txns) =>
     deriveAccounts(txns).fold(0.0, (s, a) => s + a.balance);
 
-/// Percentage change in total balance versus the end of last month, or null
-/// when there isn't enough history (no transactions before this month) to
-/// compute a meaningful figure.
+/// Percentage change in total balance versus the end of the last salary
+/// cycle (the day before payday), or null when there isn't enough history
+/// (no transactions before this cycle) to compute a meaningful figure.
 double? balanceDeltaPct(List<Transaction> txns) {
-  final now = DateTime.now();
-  final monthStart = DateTime(now.year, now.month, 1);
-  final prior = txns.where((t) => t.date.isBefore(monthStart)).toList();
+  final cycleStart = PayCycles.fromTransactions(txns).current.start;
+  final prior = txns.where((t) => t.date.isBefore(cycleStart)).toList();
   if (prior.isEmpty) return null;
   final prev = totalBalance(prior);
   if (prev <= 0) return null;

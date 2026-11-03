@@ -5,6 +5,7 @@ import '../database/database.dart';
 import '../format.dart';
 import '../main.dart';
 import '../services/debt_matching.dart';
+import '../services/pay_cycle.dart';
 import '../theme.dart';
 import '../widgets/ui.dart';
 
@@ -309,17 +310,28 @@ class _DebtDetail extends StatelessWidget {
         return StreamBuilder<List<DebtPayment>>(
           stream: db.watchDebtPayments(),
           builder: (context, paySnap) {
-            final debt = (debtSnap.data ?? const <Debt>[])
-                .where((d) => d.id == debtId)
-                .firstOrNull;
-            if (debt == null) {
-              return const SizedBox(
-                  height: 120,
-                  child: Center(child: CircularProgressIndicator()));
-            }
-            final all = paySnap.data ?? const <DebtPayment>[];
-            final p = progressOf(debt, all);
-            return _DetailBody(debt: debt, progress: p, allPayments: all);
+            return StreamBuilder<List<Transaction>>(
+              stream: db.watchTransactions(),
+              builder: (context, txSnap) {
+                final debt = (debtSnap.data ?? const <Debt>[])
+                    .where((d) => d.id == debtId)
+                    .firstOrNull;
+                if (debt == null) {
+                  return const SizedBox(
+                      height: 120,
+                      child: Center(child: CircularProgressIndicator()));
+                }
+                final all = paySnap.data ?? const <DebtPayment>[];
+                final p = progressOf(debt, all);
+                return _DetailBody(
+                  debt: debt,
+                  progress: p,
+                  allPayments: all,
+                  cycles: PayCycles.fromTransactions(
+                      txSnap.data ?? const <Transaction>[]),
+                );
+              },
+            );
           },
         );
       },
@@ -332,11 +344,13 @@ class _DetailBody extends StatelessWidget {
     required this.debt,
     required this.progress,
     required this.allPayments,
+    required this.cycles,
   });
 
   final Debt debt;
   final DebtProgress progress;
   final List<DebtPayment> allPayments;
+  final PayCycles cycles;
 
   Future<void> _linkSms(BuildContext context) async {
     final taken = confirmedTransactionIds(allPayments);
@@ -360,7 +374,7 @@ class _DetailBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = progress;
     final monthsText = _monthsLeftText(p);
-    final payoff = p.payoffMonth();
+    final payoff = p.payoffMonth(cycles: cycles);
     final ruleParts = [
       if (debt.isFixed && debt.fixedAmount > 0)
         '${money(debt.fixedAmount)} every month',

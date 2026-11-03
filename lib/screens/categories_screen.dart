@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 
@@ -5,6 +7,7 @@ import '../database/database.dart';
 import '../format.dart';
 import '../main.dart';
 import '../services/category_matching.dart';
+import '../services/pay_cycle.dart';
 import '../theme.dart';
 import '../widgets/category_resolver_builder.dart';
 import '../widgets/ui.dart';
@@ -563,27 +566,58 @@ class _CategoriesList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    // Base the view on the most recent transaction month (so freshly imported
-    // or assigned transactions are visible immediately), not always "now" —
-    // imported SMS are often dated in earlier months. [monthOffset] steps back.
-    DateTime base = DateTime(now.year, now.month);
+    // Months run salary to salary (see PayCycles). Base the view on the
+    // current cycle, or a later one if a transaction is dated after it.
+    // [monthOffset] steps back one cycle at a time.
+    final cycles = PayCycles.fromTransactions(txns);
+    var base = cycles.current;
     for (final t in txns) {
-      final m = DateTime(t.date.year, t.date.month);
-      if (m.isAfter(base)) base = m;
+      if (!t.date.isBefore(base.end)) base = cycles.cycleFor(t.date);
     }
-    final period = DateTime(base.year, base.month - monthOffset);
+    final period = cycles.shift(base, -monthOffset);
 
+    // Every expense this month lands in exactly one bucket: a category, the
+    // debts (confirmed debt payments), or Unknown (everything else).
     final spent = <int, double>{};
+    final unknown = <Transaction>[];
+    var unknownTotal = 0.0;
+    var debtTotal = 0.0;
+    var income = 0.0;
     for (final t in txns) {
-      if (t.isCredit) continue;
-      if (t.date.year != period.year || t.date.month != period.month) continue;
+      if (!period.contains(t.date)) continue;
+      if (t.isCredit) {
+        income += t.amount;
+        continue;
+      }
       final id = resolver.categoryIdFor(t);
-      if (id != null) spent[id] = (spent[id] ?? 0) + t.amount;
+      if (id != null) {
+        spent[id] = (spent[id] ?? 0) + t.amount;
+      } else if (resolver.isDebtPayment(t)) {
+        debtTotal += t.amount;
+      } else {
+        unknown.add(t);
+        unknownTotal += t.amount;
+      }
     }
-    final total = spent.values.fold<double>(0, (s, v) => s + v);
-    final periodLabel = period.year == now.year
-        ? monthName(period)
-        : '${monthName(period)} ${period.year}';
+    final total = spent.values.fold<double>(0, (s, v) => s + v) +
+        unknownTotal +
+        debtTotal;
+    final remaining = income - total;
+
+    final slices = <_PieSlice>[
+      for (final c in categories)
+        if ((spent[c.id] ?? 0) > 0)
+          _PieSlice(c.name, spent[c.id]!, hexColor(c.color)),
+      if (unknownTotal > 0)
+        _PieSlice(_unknownName, unknownTotal, _unknownColor),
+      if (debtTotal > 0)
+        _PieSlice('Debt payments', debtTotal, AppColors.peach),
+      if (remaining > 0)
+        _PieSlice('Remaining income', remaining, AppColors.mint),
+    ];
+    final periodLabel = period.start.year == now.year
+        ? period.label(now: now)
+        : '${period.label(now: now)} ${period.start.year}';
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
@@ -641,33 +675,417 @@ class _CategoriesList extends StatelessWidget {
               SerifAmount(money(total),
                   size: 32, color: Colors.white, weight: FontWeight.w500),
               const SizedBox(height: 8),
-              Text('across ${categories.length} categories',
+              Text(
+                  'Income ${money(income)} · '
+                  '${remaining >= 0 ? 'left ${money(remaining)}' : 'over by ${money(-remaining)}'}',
                   style: const TextStyle(fontSize: 12, color: Colors.white54)),
+              if (slices.isNotEmpty) ...[
+                const SizedBox(height: 18),
+                _SpendingPie(
+                  slices: slices,
+                  // Out of income, or out of spending when spending is more.
+                  whole: math.max(income, total),
+                ),
+              ],
             ],
           ),
         ),
         const SizedBox(height: 18),
+        for (final c in categories) ...[
+          _CategoryCard(
+            category: c,
+            rules: [
+              for (final r in rules)
+                if (r.categoryId == c.id) r,
+            ],
+            spent: spent[c.id] ?? 0,
+            sharePct: total <= 0 ? 0 : ((spent[c.id] ?? 0) / total * 100),
+            onTap: () => onEdit(c),
+          ),
+          const SizedBox(height: 12),
+        ],
+        _CategoryCard(
+          category: const Category(
+            id: _unknownCategoryId,
+            name: _unknownName,
+            color: '#B7C0BA',
+            senderIds: '[]',
+            shopNames: '{}',
+          ),
+          rules: const [],
+          spent: unknownTotal,
+          sharePct: total <= 0 ? 0 : (unknownTotal / total * 100),
+          subtitle: unknown.isEmpty
+              ? 'Every expense has a category'
+              : '${unknown.length} expenses without a category',
+          actionLabel: 'View ›',
+          onTap: () => _showUnknown(context, unknown, periodLabel),
+        ),
         if (categories.isEmpty)
           const EmptyHint(
-            'No categories yet. Tap + and pick example SMS to create one.',
-          )
-        else
-          for (final c in categories) ...[
-            _CategoryCard(
-              category: c,
-              rules: [
-                for (final r in rules)
-                  if (r.categoryId == c.id) r,
-              ],
-              spent: spent[c.id] ?? 0,
-              sharePct: total <= 0 ? 0 : ((spent[c.id] ?? 0) / total * 100),
-              onTap: () => onEdit(c),
-            ),
-            const SizedBox(height: 12),
-          ],
+            'Tap + and pick example SMS to create your first category.',
+          ),
       ],
     );
   }
+
+  void _showUnknown(
+      BuildContext context, List<Transaction> txns, String periodLabel) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: AppColors.screen,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
+        child: _UnknownSheet(
+          txns: txns,
+          categories: categories,
+          periodLabel: periodLabel,
+        ),
+      ),
+    );
+  }
+}
+
+/// The Unknown list: each expense can be given a category from here. Filing
+/// a named SMS adds a rule, so others like it leave Unknown too.
+class _UnknownSheet extends StatefulWidget {
+  const _UnknownSheet({
+    required this.txns,
+    required this.categories,
+    required this.periodLabel,
+  });
+
+  final List<Transaction> txns;
+  final List<Category> categories;
+  final String periodLabel;
+
+  @override
+  State<_UnknownSheet> createState() => _UnknownSheetState();
+}
+
+class _UnknownSheetState extends State<_UnknownSheet> {
+  late List<Transaction> _txns = [...widget.txns]
+    ..sort((a, b) => b.date.compareTo(a.date));
+
+  Future<void> _assign(Transaction t) async {
+    final picked = await showModalBottomSheet<Category>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: AppColors.screen,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => _CategoryChoiceSheet(
+        txn: t,
+        categories: widget.categories,
+      ),
+    );
+    if (picked == null) return;
+    await fileTransactionToCategory(db, t, picked);
+
+    // Drop everything that now has a home (the new rule may catch others).
+    final resolver = await CategoryResolver.load(db);
+    final fresh = {for (final x in await db.allTransactions()) x.id: x};
+    if (!mounted) return;
+    final before = _txns.length;
+    setState(() {
+      _txns = [
+        for (final x in _txns)
+          if (fresh[x.id] != null &&
+              resolver.categoryIdFor(fresh[x.id]!) == null)
+            fresh[x.id]!,
+      ];
+    });
+    final moved = before - _txns.length;
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(moved > 1
+            ? 'Moved $moved expenses to ${picked.name}.'
+            : 'Moved to ${picked.name}.'),
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('$_unknownName · ${widget.periodLabel}',
+              style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.ink)),
+          const SizedBox(height: 4),
+          const Text(
+            'Expenses no category picked up. Tap Assign to give one a '
+            'category; others from the same shop or person move with it.',
+            style: TextStyle(fontSize: 12, color: AppColors.muted, height: 1.4),
+          ),
+          const SizedBox(height: 10),
+          Flexible(
+            child: _txns.isEmpty
+                ? const EmptyHint('Nothing left here this month.')
+                : ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: _txns.length,
+                    separatorBuilder: (_, _) =>
+                        const Divider(height: 1, color: AppColors.cardBorder),
+                    itemBuilder: (context, i) {
+                      final t = _txns[i];
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    t.description.isEmpty
+                                        ? 'Payment'
+                                        : t.description,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.ink),
+                                  ),
+                                  Text(
+                                    [
+                                      shortDate(t.date),
+                                      if (t.card.isNotEmpty) '••••${t.card}',
+                                      money(t.amount),
+                                    ].join(' · '),
+                                    style: const TextStyle(
+                                        fontSize: 11, color: AppColors.muted),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            InkWell(
+                              onTap: () => _assign(t),
+                              borderRadius: BorderRadius.circular(100),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(100),
+                                  border: Border.all(
+                                      color: const Color(0x261E2E2A)),
+                                ),
+                                child: const Text('Assign',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.green)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Pick a category for one Unknown expense. Pops with the chosen category.
+class _CategoryChoiceSheet extends StatelessWidget {
+  const _CategoryChoiceSheet({required this.txn, required this.categories});
+
+  final Transaction txn;
+  final List<Category> categories;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = txn.description.isEmpty ? 'Payment' : txn.description;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Assign "$title"',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.ink)),
+          const SizedBox(height: 4),
+          Text(
+            hasReusableName(txn)
+                ? 'Every "$title" expense will go to this category.'
+                : 'Only this one expense moves.',
+            style: const TextStyle(fontSize: 12, color: AppColors.muted),
+          ),
+          const SizedBox(height: 10),
+          if (categories.isEmpty)
+            const EmptyHint(
+                'No categories yet. Close this and tap + to create one.')
+          else
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final c in categories)
+                    InkWell(
+                      onTap: () => Navigator.pop(context, c),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        decoration: const BoxDecoration(
+                          border: Border(
+                              bottom: BorderSide(color: AppColors.cardBorder)),
+                        ),
+                        child: Row(
+                          children: [
+                            Dot(hexColor(c.color), size: 9),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(c.name,
+                                  style: const TextStyle(
+                                      fontSize: 14.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.ink)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The built-in catch-all bucket: every expense that no category, and no
+/// debt, claims. It isn't stored; it's worked out each time.
+const _unknownName = 'Unknown';
+const _unknownCategoryId = -2;
+const _unknownColor = AppColors.inactive;
+
+class _PieSlice {
+  const _PieSlice(this.label, this.value, this.color);
+
+  final String label;
+  final double value;
+  final Color color;
+}
+
+/// Donut of where this month's money went, with a legend beside it.
+class _SpendingPie extends StatelessWidget {
+  const _SpendingPie({required this.slices, required this.whole});
+
+  final List<_PieSlice> slices;
+
+  /// What 100% means (income, or spending if spending is larger).
+  final double whole;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        SizedBox(
+          width: 112,
+          height: 112,
+          child: CustomPaint(painter: _DonutPainter(slices)),
+        ),
+        const SizedBox(width: 18),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final s in slices)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(
+                    children: [
+                      Dot(s.color, size: 8),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(s.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 12, color: Colors.white70)),
+                      ),
+                      Text(
+                          whole <= 0
+                              ? ''
+                              : '${(s.value / whole * 100).round()}%',
+                          style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white)),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DonutPainter extends CustomPainter {
+  _DonutPainter(this.slices);
+
+  final List<_PieSlice> slices;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final total = slices.fold<double>(0, (s, x) => s + x.value);
+    if (total <= 0) return;
+    const stroke = 16.0;
+    final rect = Rect.fromCircle(
+      center: size.center(Offset.zero),
+      radius: math.min(size.width, size.height) / 2 - stroke / 2,
+    );
+    // A hairline gap between slices so neighbours stay distinct.
+    final gap = slices.length > 1 ? 0.03 : 0.0;
+    var start = -math.pi / 2;
+    for (final s in slices) {
+      final sweep = s.value / total * 2 * math.pi;
+      if (sweep > gap) {
+        canvas.drawArc(
+          rect,
+          start + gap / 2,
+          sweep - gap,
+          false,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = stroke
+            ..color = s.color,
+        );
+      }
+      start += sweep;
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DonutPainter old) => old.slices != slices;
 }
 
 class _CategoryCard extends StatelessWidget {
@@ -677,13 +1095,21 @@ class _CategoryCard extends StatelessWidget {
     required this.spent,
     required this.sharePct,
     required this.onTap,
+    this.subtitle,
+    this.actionLabel = 'Edit ›',
   });
 
   final Category category;
   final List<CategoryRule> rules;
   final double spent;
+
+  /// This category's share of all spending this month, 0–100. The bar shows it.
   final double sharePct;
   final VoidCallback onTap;
+
+  /// Replaces the list of shops under the bar.
+  final String? subtitle;
+  final String actionLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -720,14 +1146,15 @@ class _CategoryCard extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  shops.isEmpty ? 'No SMS picked yet' : shops,
+                  subtitle ?? (shops.isEmpty ? 'No SMS picked yet' : shops),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 12, color: AppColors.muted),
                 ),
               ),
-              const Text('Edit ›',
-                  style: TextStyle(fontSize: 12, color: AppColors.faint)),
+              Text('${sharePct.round()}% of spending · $actionLabel',
+                  style:
+                      const TextStyle(fontSize: 12, color: AppColors.faint)),
             ],
           ),
         ],

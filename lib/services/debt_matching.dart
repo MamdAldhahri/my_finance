@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import '../database/database.dart';
+import 'pay_cycle.dart';
 
 /// How far an SMS amount may differ from a debt's fixed amount and still
 /// match — half a baisa, to absorb rounding only. The amount is the key that
@@ -59,11 +60,19 @@ class DebtProgress {
   double fractionPaid(Debt d) =>
       d.totalAmount <= 0 ? 0 : (paid / d.totalAmount).clamp(0.0, 1.0);
 
-  /// The month the last payment is expected, counting from [from].
-  DateTime? payoffMonth({DateTime? from}) {
+  /// The budget month (salary cycle) the last payment is expected in.
+  ///
+  /// Counts one payment per salary cycle starting with the current one, or
+  /// with the next one when this cycle's payment is already confirmed, so a
+  /// payment made right after payday doesn't make the payoff look a month
+  /// early.
+  DateTime? payoffMonth({PayCycles? cycles}) {
     if (monthsLeft == null || monthsLeft == 0) return null;
-    final now = from ?? DateTime.now();
-    return DateTime(now.year, now.month + monthsLeft! - 1, 1);
+    final c = (cycles ?? PayCycles(const [])).current;
+    final paidThisCycle = payments.any((p) => c.contains(p.date));
+    final a = c.anchorMonth;
+    return DateTime(
+        a.year, a.month + monthsLeft! - 1 + (paidThisCycle ? 1 : 0), 1);
   }
 }
 

@@ -4,6 +4,7 @@ import '../database/database.dart';
 import '../format.dart';
 import '../main.dart';
 import '../services/category_matching.dart';
+import '../services/pay_cycle.dart';
 import '../services/sms_import.dart';
 import '../theme.dart';
 import '../widgets/category_resolver_builder.dart';
@@ -154,9 +155,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     List<Category> categories,
     CategoryResolver resolver,
   ) {
-    final now = DateTime.now();
-    bool thisMonth(Transaction t) =>
-        t.date.year == now.year && t.date.month == now.month;
+    // "This month" = the current salary cycle, not the calendar month.
+    final cycle = PayCycles.fromTransactions(all).current;
+    bool thisMonth(Transaction t) => cycle.contains(t.date);
     final income = all
         .where((t) => t.isCredit && thisMonth(t))
         .fold<double>(0, (s, t) => s + t.amount);
@@ -177,7 +178,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           children: [
             Expanded(
               child: _MonthStat(
-                label: 'Income · ${monthName(now)}',
+                label: 'Income · ${cycle.label()}',
                 value: income,
                 color: AppColors.green,
               ),
@@ -185,7 +186,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: _MonthStat(
-                label: 'Expenses · ${monthName(now)}',
+                label: 'Expenses · ${cycle.label()}',
                 value: expense,
                 color: AppColors.terracotta,
               ),
