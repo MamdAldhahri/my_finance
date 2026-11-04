@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import '../database/database.dart';
 import '../format.dart';
 import '../main.dart';
+import '../services/category_matching.dart';
 import '../services/debt_matching.dart';
 import '../services/derive.dart';
 import '../theme.dart';
+import '../widgets/category_resolver_builder.dart';
+import '../widgets/sms_body_dialog.dart';
 import '../widgets/transaction_row.dart';
 import '../widgets/ui.dart';
 
@@ -22,10 +25,8 @@ class OverviewScreen extends StatelessWidget {
         stream: db.watchTransactions(),
         builder: (context, txSnap) {
           final txns = txSnap.data ?? const [];
-          return StreamBuilder<List<Category>>(
-            stream: db.watchCategories(),
-            builder: (context, catSnap) {
-              final categories = catSnap.data ?? const [];
+          return CategoryResolverBuilder(
+            builder: (context, categories, resolver) {
               return StreamBuilder<List<Debt>>(
                 stream: db.watchDebts(),
                 builder: (context, debtSnap) {
@@ -38,6 +39,7 @@ class OverviewScreen extends StatelessWidget {
                           return _Body(
                             txns: txns,
                             categories: categories,
+                            resolver: resolver,
                             debts: debtSnap.data ?? const [],
                             debtPayments: paySnap.data ?? const [],
                             goals: goalSnap.data ?? const [],
@@ -60,6 +62,7 @@ class _Body extends StatelessWidget {
   const _Body({
     required this.txns,
     required this.categories,
+    required this.resolver,
     required this.debts,
     required this.debtPayments,
     required this.goals,
@@ -67,6 +70,7 @@ class _Body extends StatelessWidget {
 
   final List<Transaction> txns;
   final List<Category> categories;
+  final CategoryResolver resolver;
   final List<Debt> debts;
   final List<DebtPayment> debtPayments;
   final List<Goal> goals;
@@ -153,6 +157,11 @@ class _Body extends StatelessWidget {
                     txn: recent[i],
                     category: _categoryOf(recent[i]),
                     showDivider: i != recent.length - 1,
+                    showInitial: false,
+                    showUnknown: recent[i].source == TxSource.sms &&
+                        !recent[i].isCredit &&
+                        !resolver.isDebtPayment(recent[i]),
+                    onTap: () => showSmsBody(context, recent[i]),
                   ),
               ],
             ),
@@ -162,7 +171,7 @@ class _Body extends StatelessWidget {
   }
 
   Category? _categoryOf(Transaction t) {
-    final id = categoryIdFor(t, categories);
+    final id = resolver.categoryIdFor(t);
     if (id == null) return null;
     for (final c in categories) {
       if (c.id == id) return c;
@@ -272,7 +281,7 @@ class _BalanceCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 const Text(
-                  'vs last month',
+                  'vs before payday',
                   style: TextStyle(fontSize: 12, color: Colors.white54),
                 ),
               ],
@@ -322,7 +331,7 @@ class _AccountRow extends StatelessWidget {
               ),
             ),
           ),
-          Text(
+          AmountText(
             money(account.balance),
             style: const TextStyle(
               fontSize: 14,

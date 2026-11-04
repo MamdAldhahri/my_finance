@@ -29,6 +29,9 @@ void main() async {
   db = AppDatabase();
   smsImport = SmsImportService(db);
 
+  // Bring names of already-imported SMS up to date with the current parser.
+  await refreshSmsDescriptions(db);
+
   // If the user already enabled auto-import, resume it: start the live
   // listener and pull in anything received while the app was closed.
   if (await db.isSmsImportEnabled()) {
@@ -65,10 +68,10 @@ class _RootScreenState extends State<RootScreen> {
 
   static const _screens = [
     OverviewScreen(),
-    TransactionsScreen(),
     CategoriesScreen(),
     DebtsScreen(),
     GoalsScreen(),
+    TransactionsScreen(),
   ];
 
   @override
@@ -93,10 +96,10 @@ class _BottomNav extends StatelessWidget {
 
   static const _items = [
     (Icons.home_outlined, Icons.home, 'Overview'),
-    (Icons.swap_horiz, Icons.swap_horiz, 'Transactions'),
     (Icons.grid_view_outlined, Icons.grid_view, 'Categories'),
     (Icons.credit_card_outlined, Icons.credit_card, 'Debt'),
     (Icons.adjust_outlined, Icons.adjust, 'Goals'),
+    (Icons.swap_horiz, Icons.swap_horiz, 'Transactions'),
   ];
 
   @override

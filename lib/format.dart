@@ -8,8 +8,13 @@ final NumberFormat _amount = NumberFormat('#,##0.000');
 /// Always non-negative — carry the sign separately where needed.
 String amountText(double value) => _amount.format(value.abs());
 
-/// Full money label with the currency prefix: "OMR 1,850.000".
-String money(double value) => 'OMR ${amountText(value)}';
+/// Full money label, amount first then currency: "1,850.000 OMR".
+/// Widgets that show it big ([SerifAmount], [AmountText]) draw the currency
+/// smaller than the number.
+String money(double value) => '${amountText(value)} $currency';
+
+/// The currency label that follows every amount.
+const currency = 'OMR';
 
 /// Short date, e.g. "20 Jul 2026".
 String shortDate(DateTime date) => DateFormat('d MMM yyyy').format(date);

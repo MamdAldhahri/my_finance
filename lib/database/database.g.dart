@@ -1053,6 +1053,779 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
   }
 }
 
+class $CategoryRulesTable extends CategoryRules
+    with TableInfo<$CategoryRulesTable, CategoryRule> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CategoryRulesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _categoryIdMeta = const VerificationMeta(
+    'categoryId',
+  );
+  @override
+  late final GeneratedColumn<int> categoryId = GeneratedColumn<int>(
+    'category_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _senderMeta = const VerificationMeta('sender');
+  @override
+  late final GeneratedColumn<String> sender = GeneratedColumn<String>(
+    'sender',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _counterpartyMeta = const VerificationMeta(
+    'counterparty',
+  );
+  @override
+  late final GeneratedColumn<String> counterparty = GeneratedColumn<String>(
+    'counterparty',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _exactMeta = const VerificationMeta('exact');
+  @override
+  late final GeneratedColumn<bool> exact = GeneratedColumn<bool>(
+    'exact',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("exact" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _matchAmountMeta = const VerificationMeta(
+    'matchAmount',
+  );
+  @override
+  late final GeneratedColumn<bool> matchAmount = GeneratedColumn<bool>(
+    'match_amount',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("match_amount" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _amountMeta = const VerificationMeta('amount');
+  @override
+  late final GeneratedColumn<double> amount = GeneratedColumn<double>(
+    'amount',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _isCreditMeta = const VerificationMeta(
+    'isCredit',
+  );
+  @override
+  late final GeneratedColumn<bool> isCredit = GeneratedColumn<bool>(
+    'is_credit',
+    aliasedName,
+    true,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_credit" IN (0, 1))',
+    ),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    categoryId,
+    sender,
+    counterparty,
+    exact,
+    matchAmount,
+    amount,
+    isCredit,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'category_rules';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CategoryRule> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('category_id')) {
+      context.handle(
+        _categoryIdMeta,
+        categoryId.isAcceptableOrUnknown(data['category_id']!, _categoryIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_categoryIdMeta);
+    }
+    if (data.containsKey('sender')) {
+      context.handle(
+        _senderMeta,
+        sender.isAcceptableOrUnknown(data['sender']!, _senderMeta),
+      );
+    }
+    if (data.containsKey('counterparty')) {
+      context.handle(
+        _counterpartyMeta,
+        counterparty.isAcceptableOrUnknown(
+          data['counterparty']!,
+          _counterpartyMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_counterpartyMeta);
+    }
+    if (data.containsKey('exact')) {
+      context.handle(
+        _exactMeta,
+        exact.isAcceptableOrUnknown(data['exact']!, _exactMeta),
+      );
+    }
+    if (data.containsKey('match_amount')) {
+      context.handle(
+        _matchAmountMeta,
+        matchAmount.isAcceptableOrUnknown(
+          data['match_amount']!,
+          _matchAmountMeta,
+        ),
+      );
+    }
+    if (data.containsKey('amount')) {
+      context.handle(
+        _amountMeta,
+        amount.isAcceptableOrUnknown(data['amount']!, _amountMeta),
+      );
+    }
+    if (data.containsKey('is_credit')) {
+      context.handle(
+        _isCreditMeta,
+        isCredit.isAcceptableOrUnknown(data['is_credit']!, _isCreditMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  CategoryRule map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CategoryRule(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      categoryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}category_id'],
+      )!,
+      sender: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sender'],
+      )!,
+      counterparty: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}counterparty'],
+      )!,
+      exact: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}exact'],
+      )!,
+      matchAmount: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}match_amount'],
+      )!,
+      amount: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}amount'],
+      )!,
+      isCredit: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_credit'],
+      ),
+    );
+  }
+
+  @override
+  $CategoryRulesTable createAlias(String alias) {
+    return $CategoryRulesTable(attachedDatabase, alias);
+  }
+}
+
+class CategoryRule extends DataClass implements Insertable<CategoryRule> {
+  final int id;
+  final int categoryId;
+  final String sender;
+  final String counterparty;
+  final bool exact;
+  final bool matchAmount;
+  final double amount;
+  final bool? isCredit;
+  const CategoryRule({
+    required this.id,
+    required this.categoryId,
+    required this.sender,
+    required this.counterparty,
+    required this.exact,
+    required this.matchAmount,
+    required this.amount,
+    this.isCredit,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['category_id'] = Variable<int>(categoryId);
+    map['sender'] = Variable<String>(sender);
+    map['counterparty'] = Variable<String>(counterparty);
+    map['exact'] = Variable<bool>(exact);
+    map['match_amount'] = Variable<bool>(matchAmount);
+    map['amount'] = Variable<double>(amount);
+    if (!nullToAbsent || isCredit != null) {
+      map['is_credit'] = Variable<bool>(isCredit);
+    }
+    return map;
+  }
+
+  CategoryRulesCompanion toCompanion(bool nullToAbsent) {
+    return CategoryRulesCompanion(
+      id: Value(id),
+      categoryId: Value(categoryId),
+      sender: Value(sender),
+      counterparty: Value(counterparty),
+      exact: Value(exact),
+      matchAmount: Value(matchAmount),
+      amount: Value(amount),
+      isCredit: isCredit == null && nullToAbsent
+          ? const Value.absent()
+          : Value(isCredit),
+    );
+  }
+
+  factory CategoryRule.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CategoryRule(
+      id: serializer.fromJson<int>(json['id']),
+      categoryId: serializer.fromJson<int>(json['categoryId']),
+      sender: serializer.fromJson<String>(json['sender']),
+      counterparty: serializer.fromJson<String>(json['counterparty']),
+      exact: serializer.fromJson<bool>(json['exact']),
+      matchAmount: serializer.fromJson<bool>(json['matchAmount']),
+      amount: serializer.fromJson<double>(json['amount']),
+      isCredit: serializer.fromJson<bool?>(json['isCredit']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'categoryId': serializer.toJson<int>(categoryId),
+      'sender': serializer.toJson<String>(sender),
+      'counterparty': serializer.toJson<String>(counterparty),
+      'exact': serializer.toJson<bool>(exact),
+      'matchAmount': serializer.toJson<bool>(matchAmount),
+      'amount': serializer.toJson<double>(amount),
+      'isCredit': serializer.toJson<bool?>(isCredit),
+    };
+  }
+
+  CategoryRule copyWith({
+    int? id,
+    int? categoryId,
+    String? sender,
+    String? counterparty,
+    bool? exact,
+    bool? matchAmount,
+    double? amount,
+    Value<bool?> isCredit = const Value.absent(),
+  }) => CategoryRule(
+    id: id ?? this.id,
+    categoryId: categoryId ?? this.categoryId,
+    sender: sender ?? this.sender,
+    counterparty: counterparty ?? this.counterparty,
+    exact: exact ?? this.exact,
+    matchAmount: matchAmount ?? this.matchAmount,
+    amount: amount ?? this.amount,
+    isCredit: isCredit.present ? isCredit.value : this.isCredit,
+  );
+  CategoryRule copyWithCompanion(CategoryRulesCompanion data) {
+    return CategoryRule(
+      id: data.id.present ? data.id.value : this.id,
+      categoryId: data.categoryId.present
+          ? data.categoryId.value
+          : this.categoryId,
+      sender: data.sender.present ? data.sender.value : this.sender,
+      counterparty: data.counterparty.present
+          ? data.counterparty.value
+          : this.counterparty,
+      exact: data.exact.present ? data.exact.value : this.exact,
+      matchAmount: data.matchAmount.present
+          ? data.matchAmount.value
+          : this.matchAmount,
+      amount: data.amount.present ? data.amount.value : this.amount,
+      isCredit: data.isCredit.present ? data.isCredit.value : this.isCredit,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CategoryRule(')
+          ..write('id: $id, ')
+          ..write('categoryId: $categoryId, ')
+          ..write('sender: $sender, ')
+          ..write('counterparty: $counterparty, ')
+          ..write('exact: $exact, ')
+          ..write('matchAmount: $matchAmount, ')
+          ..write('amount: $amount, ')
+          ..write('isCredit: $isCredit')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    categoryId,
+    sender,
+    counterparty,
+    exact,
+    matchAmount,
+    amount,
+    isCredit,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CategoryRule &&
+          other.id == this.id &&
+          other.categoryId == this.categoryId &&
+          other.sender == this.sender &&
+          other.counterparty == this.counterparty &&
+          other.exact == this.exact &&
+          other.matchAmount == this.matchAmount &&
+          other.amount == this.amount &&
+          other.isCredit == this.isCredit);
+}
+
+class CategoryRulesCompanion extends UpdateCompanion<CategoryRule> {
+  final Value<int> id;
+  final Value<int> categoryId;
+  final Value<String> sender;
+  final Value<String> counterparty;
+  final Value<bool> exact;
+  final Value<bool> matchAmount;
+  final Value<double> amount;
+  final Value<bool?> isCredit;
+  const CategoryRulesCompanion({
+    this.id = const Value.absent(),
+    this.categoryId = const Value.absent(),
+    this.sender = const Value.absent(),
+    this.counterparty = const Value.absent(),
+    this.exact = const Value.absent(),
+    this.matchAmount = const Value.absent(),
+    this.amount = const Value.absent(),
+    this.isCredit = const Value.absent(),
+  });
+  CategoryRulesCompanion.insert({
+    this.id = const Value.absent(),
+    required int categoryId,
+    this.sender = const Value.absent(),
+    required String counterparty,
+    this.exact = const Value.absent(),
+    this.matchAmount = const Value.absent(),
+    this.amount = const Value.absent(),
+    this.isCredit = const Value.absent(),
+  }) : categoryId = Value(categoryId),
+       counterparty = Value(counterparty);
+  static Insertable<CategoryRule> custom({
+    Expression<int>? id,
+    Expression<int>? categoryId,
+    Expression<String>? sender,
+    Expression<String>? counterparty,
+    Expression<bool>? exact,
+    Expression<bool>? matchAmount,
+    Expression<double>? amount,
+    Expression<bool>? isCredit,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (categoryId != null) 'category_id': categoryId,
+      if (sender != null) 'sender': sender,
+      if (counterparty != null) 'counterparty': counterparty,
+      if (exact != null) 'exact': exact,
+      if (matchAmount != null) 'match_amount': matchAmount,
+      if (amount != null) 'amount': amount,
+      if (isCredit != null) 'is_credit': isCredit,
+    });
+  }
+
+  CategoryRulesCompanion copyWith({
+    Value<int>? id,
+    Value<int>? categoryId,
+    Value<String>? sender,
+    Value<String>? counterparty,
+    Value<bool>? exact,
+    Value<bool>? matchAmount,
+    Value<double>? amount,
+    Value<bool?>? isCredit,
+  }) {
+    return CategoryRulesCompanion(
+      id: id ?? this.id,
+      categoryId: categoryId ?? this.categoryId,
+      sender: sender ?? this.sender,
+      counterparty: counterparty ?? this.counterparty,
+      exact: exact ?? this.exact,
+      matchAmount: matchAmount ?? this.matchAmount,
+      amount: amount ?? this.amount,
+      isCredit: isCredit ?? this.isCredit,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (categoryId.present) {
+      map['category_id'] = Variable<int>(categoryId.value);
+    }
+    if (sender.present) {
+      map['sender'] = Variable<String>(sender.value);
+    }
+    if (counterparty.present) {
+      map['counterparty'] = Variable<String>(counterparty.value);
+    }
+    if (exact.present) {
+      map['exact'] = Variable<bool>(exact.value);
+    }
+    if (matchAmount.present) {
+      map['match_amount'] = Variable<bool>(matchAmount.value);
+    }
+    if (amount.present) {
+      map['amount'] = Variable<double>(amount.value);
+    }
+    if (isCredit.present) {
+      map['is_credit'] = Variable<bool>(isCredit.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CategoryRulesCompanion(')
+          ..write('id: $id, ')
+          ..write('categoryId: $categoryId, ')
+          ..write('sender: $sender, ')
+          ..write('counterparty: $counterparty, ')
+          ..write('exact: $exact, ')
+          ..write('matchAmount: $matchAmount, ')
+          ..write('amount: $amount, ')
+          ..write('isCredit: $isCredit')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $CategoryExclusionsTable extends CategoryExclusions
+    with TableInfo<$CategoryExclusionsTable, CategoryExclusion> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CategoryExclusionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _categoryIdMeta = const VerificationMeta(
+    'categoryId',
+  );
+  @override
+  late final GeneratedColumn<int> categoryId = GeneratedColumn<int>(
+    'category_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _transactionIdMeta = const VerificationMeta(
+    'transactionId',
+  );
+  @override
+  late final GeneratedColumn<int> transactionId = GeneratedColumn<int>(
+    'transaction_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, categoryId, transactionId];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'category_exclusions';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CategoryExclusion> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('category_id')) {
+      context.handle(
+        _categoryIdMeta,
+        categoryId.isAcceptableOrUnknown(data['category_id']!, _categoryIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_categoryIdMeta);
+    }
+    if (data.containsKey('transaction_id')) {
+      context.handle(
+        _transactionIdMeta,
+        transactionId.isAcceptableOrUnknown(
+          data['transaction_id']!,
+          _transactionIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_transactionIdMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {categoryId, transactionId},
+  ];
+  @override
+  CategoryExclusion map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CategoryExclusion(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      categoryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}category_id'],
+      )!,
+      transactionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}transaction_id'],
+      )!,
+    );
+  }
+
+  @override
+  $CategoryExclusionsTable createAlias(String alias) {
+    return $CategoryExclusionsTable(attachedDatabase, alias);
+  }
+}
+
+class CategoryExclusion extends DataClass
+    implements Insertable<CategoryExclusion> {
+  final int id;
+  final int categoryId;
+  final int transactionId;
+  const CategoryExclusion({
+    required this.id,
+    required this.categoryId,
+    required this.transactionId,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['category_id'] = Variable<int>(categoryId);
+    map['transaction_id'] = Variable<int>(transactionId);
+    return map;
+  }
+
+  CategoryExclusionsCompanion toCompanion(bool nullToAbsent) {
+    return CategoryExclusionsCompanion(
+      id: Value(id),
+      categoryId: Value(categoryId),
+      transactionId: Value(transactionId),
+    );
+  }
+
+  factory CategoryExclusion.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CategoryExclusion(
+      id: serializer.fromJson<int>(json['id']),
+      categoryId: serializer.fromJson<int>(json['categoryId']),
+      transactionId: serializer.fromJson<int>(json['transactionId']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'categoryId': serializer.toJson<int>(categoryId),
+      'transactionId': serializer.toJson<int>(transactionId),
+    };
+  }
+
+  CategoryExclusion copyWith({int? id, int? categoryId, int? transactionId}) =>
+      CategoryExclusion(
+        id: id ?? this.id,
+        categoryId: categoryId ?? this.categoryId,
+        transactionId: transactionId ?? this.transactionId,
+      );
+  CategoryExclusion copyWithCompanion(CategoryExclusionsCompanion data) {
+    return CategoryExclusion(
+      id: data.id.present ? data.id.value : this.id,
+      categoryId: data.categoryId.present
+          ? data.categoryId.value
+          : this.categoryId,
+      transactionId: data.transactionId.present
+          ? data.transactionId.value
+          : this.transactionId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CategoryExclusion(')
+          ..write('id: $id, ')
+          ..write('categoryId: $categoryId, ')
+          ..write('transactionId: $transactionId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, categoryId, transactionId);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CategoryExclusion &&
+          other.id == this.id &&
+          other.categoryId == this.categoryId &&
+          other.transactionId == this.transactionId);
+}
+
+class CategoryExclusionsCompanion extends UpdateCompanion<CategoryExclusion> {
+  final Value<int> id;
+  final Value<int> categoryId;
+  final Value<int> transactionId;
+  const CategoryExclusionsCompanion({
+    this.id = const Value.absent(),
+    this.categoryId = const Value.absent(),
+    this.transactionId = const Value.absent(),
+  });
+  CategoryExclusionsCompanion.insert({
+    this.id = const Value.absent(),
+    required int categoryId,
+    required int transactionId,
+  }) : categoryId = Value(categoryId),
+       transactionId = Value(transactionId);
+  static Insertable<CategoryExclusion> custom({
+    Expression<int>? id,
+    Expression<int>? categoryId,
+    Expression<int>? transactionId,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (categoryId != null) 'category_id': categoryId,
+      if (transactionId != null) 'transaction_id': transactionId,
+    });
+  }
+
+  CategoryExclusionsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? categoryId,
+    Value<int>? transactionId,
+  }) {
+    return CategoryExclusionsCompanion(
+      id: id ?? this.id,
+      categoryId: categoryId ?? this.categoryId,
+      transactionId: transactionId ?? this.transactionId,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (categoryId.present) {
+      map['category_id'] = Variable<int>(categoryId.value);
+    }
+    if (transactionId.present) {
+      map['transaction_id'] = Variable<int>(transactionId.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CategoryExclusionsCompanion(')
+          ..write('id: $id, ')
+          ..write('categoryId: $categoryId, ')
+          ..write('transactionId: $transactionId')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $GoalsTable extends Goals with TableInfo<$GoalsTable, Goal> {
   @override
   final GeneratedDatabase attachedDatabase;
@@ -2834,6 +3607,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $TransactionsTable transactions = $TransactionsTable(this);
   late final $CategoriesTable categories = $CategoriesTable(this);
+  late final $CategoryRulesTable categoryRules = $CategoryRulesTable(this);
+  late final $CategoryExclusionsTable categoryExclusions =
+      $CategoryExclusionsTable(this);
   late final $GoalsTable goals = $GoalsTable(this);
   late final $DebtsTable debts = $DebtsTable(this);
   late final $DebtPaymentsTable debtPayments = $DebtPaymentsTable(this);
@@ -2845,6 +3621,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   List<DatabaseSchemaEntity> get allSchemaEntities => [
     transactions,
     categories,
+    categoryRules,
+    categoryExclusions,
     goals,
     debts,
     debtPayments,
@@ -3374,6 +4152,436 @@ typedef $$CategoriesTableProcessedTableManager =
       $$CategoriesTableUpdateCompanionBuilder,
       (Category, BaseReferences<_$AppDatabase, $CategoriesTable, Category>),
       Category,
+      PrefetchHooks Function()
+    >;
+typedef $$CategoryRulesTableCreateCompanionBuilder =
+    CategoryRulesCompanion Function({
+      Value<int> id,
+      required int categoryId,
+      Value<String> sender,
+      required String counterparty,
+      Value<bool> exact,
+      Value<bool> matchAmount,
+      Value<double> amount,
+      Value<bool?> isCredit,
+    });
+typedef $$CategoryRulesTableUpdateCompanionBuilder =
+    CategoryRulesCompanion Function({
+      Value<int> id,
+      Value<int> categoryId,
+      Value<String> sender,
+      Value<String> counterparty,
+      Value<bool> exact,
+      Value<bool> matchAmount,
+      Value<double> amount,
+      Value<bool?> isCredit,
+    });
+
+class $$CategoryRulesTableFilterComposer
+    extends Composer<_$AppDatabase, $CategoryRulesTable> {
+  $$CategoryRulesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get categoryId => $composableBuilder(
+    column: $table.categoryId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sender => $composableBuilder(
+    column: $table.sender,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get counterparty => $composableBuilder(
+    column: $table.counterparty,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get exact => $composableBuilder(
+    column: $table.exact,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get matchAmount => $composableBuilder(
+    column: $table.matchAmount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isCredit => $composableBuilder(
+    column: $table.isCredit,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$CategoryRulesTableOrderingComposer
+    extends Composer<_$AppDatabase, $CategoryRulesTable> {
+  $$CategoryRulesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get categoryId => $composableBuilder(
+    column: $table.categoryId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sender => $composableBuilder(
+    column: $table.sender,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get counterparty => $composableBuilder(
+    column: $table.counterparty,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get exact => $composableBuilder(
+    column: $table.exact,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get matchAmount => $composableBuilder(
+    column: $table.matchAmount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isCredit => $composableBuilder(
+    column: $table.isCredit,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CategoryRulesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CategoryRulesTable> {
+  $$CategoryRulesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get categoryId => $composableBuilder(
+    column: $table.categoryId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sender =>
+      $composableBuilder(column: $table.sender, builder: (column) => column);
+
+  GeneratedColumn<String> get counterparty => $composableBuilder(
+    column: $table.counterparty,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get exact =>
+      $composableBuilder(column: $table.exact, builder: (column) => column);
+
+  GeneratedColumn<bool> get matchAmount => $composableBuilder(
+    column: $table.matchAmount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get amount =>
+      $composableBuilder(column: $table.amount, builder: (column) => column);
+
+  GeneratedColumn<bool> get isCredit =>
+      $composableBuilder(column: $table.isCredit, builder: (column) => column);
+}
+
+class $$CategoryRulesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CategoryRulesTable,
+          CategoryRule,
+          $$CategoryRulesTableFilterComposer,
+          $$CategoryRulesTableOrderingComposer,
+          $$CategoryRulesTableAnnotationComposer,
+          $$CategoryRulesTableCreateCompanionBuilder,
+          $$CategoryRulesTableUpdateCompanionBuilder,
+          (
+            CategoryRule,
+            BaseReferences<_$AppDatabase, $CategoryRulesTable, CategoryRule>,
+          ),
+          CategoryRule,
+          PrefetchHooks Function()
+        > {
+  $$CategoryRulesTableTableManager(_$AppDatabase db, $CategoryRulesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CategoryRulesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CategoryRulesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CategoryRulesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> categoryId = const Value.absent(),
+                Value<String> sender = const Value.absent(),
+                Value<String> counterparty = const Value.absent(),
+                Value<bool> exact = const Value.absent(),
+                Value<bool> matchAmount = const Value.absent(),
+                Value<double> amount = const Value.absent(),
+                Value<bool?> isCredit = const Value.absent(),
+              }) => CategoryRulesCompanion(
+                id: id,
+                categoryId: categoryId,
+                sender: sender,
+                counterparty: counterparty,
+                exact: exact,
+                matchAmount: matchAmount,
+                amount: amount,
+                isCredit: isCredit,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int categoryId,
+                Value<String> sender = const Value.absent(),
+                required String counterparty,
+                Value<bool> exact = const Value.absent(),
+                Value<bool> matchAmount = const Value.absent(),
+                Value<double> amount = const Value.absent(),
+                Value<bool?> isCredit = const Value.absent(),
+              }) => CategoryRulesCompanion.insert(
+                id: id,
+                categoryId: categoryId,
+                sender: sender,
+                counterparty: counterparty,
+                exact: exact,
+                matchAmount: matchAmount,
+                amount: amount,
+                isCredit: isCredit,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$CategoryRulesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CategoryRulesTable,
+      CategoryRule,
+      $$CategoryRulesTableFilterComposer,
+      $$CategoryRulesTableOrderingComposer,
+      $$CategoryRulesTableAnnotationComposer,
+      $$CategoryRulesTableCreateCompanionBuilder,
+      $$CategoryRulesTableUpdateCompanionBuilder,
+      (
+        CategoryRule,
+        BaseReferences<_$AppDatabase, $CategoryRulesTable, CategoryRule>,
+      ),
+      CategoryRule,
+      PrefetchHooks Function()
+    >;
+typedef $$CategoryExclusionsTableCreateCompanionBuilder =
+    CategoryExclusionsCompanion Function({
+      Value<int> id,
+      required int categoryId,
+      required int transactionId,
+    });
+typedef $$CategoryExclusionsTableUpdateCompanionBuilder =
+    CategoryExclusionsCompanion Function({
+      Value<int> id,
+      Value<int> categoryId,
+      Value<int> transactionId,
+    });
+
+class $$CategoryExclusionsTableFilterComposer
+    extends Composer<_$AppDatabase, $CategoryExclusionsTable> {
+  $$CategoryExclusionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get categoryId => $composableBuilder(
+    column: $table.categoryId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get transactionId => $composableBuilder(
+    column: $table.transactionId,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$CategoryExclusionsTableOrderingComposer
+    extends Composer<_$AppDatabase, $CategoryExclusionsTable> {
+  $$CategoryExclusionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get categoryId => $composableBuilder(
+    column: $table.categoryId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get transactionId => $composableBuilder(
+    column: $table.transactionId,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CategoryExclusionsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CategoryExclusionsTable> {
+  $$CategoryExclusionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get categoryId => $composableBuilder(
+    column: $table.categoryId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get transactionId => $composableBuilder(
+    column: $table.transactionId,
+    builder: (column) => column,
+  );
+}
+
+class $$CategoryExclusionsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CategoryExclusionsTable,
+          CategoryExclusion,
+          $$CategoryExclusionsTableFilterComposer,
+          $$CategoryExclusionsTableOrderingComposer,
+          $$CategoryExclusionsTableAnnotationComposer,
+          $$CategoryExclusionsTableCreateCompanionBuilder,
+          $$CategoryExclusionsTableUpdateCompanionBuilder,
+          (
+            CategoryExclusion,
+            BaseReferences<
+              _$AppDatabase,
+              $CategoryExclusionsTable,
+              CategoryExclusion
+            >,
+          ),
+          CategoryExclusion,
+          PrefetchHooks Function()
+        > {
+  $$CategoryExclusionsTableTableManager(
+    _$AppDatabase db,
+    $CategoryExclusionsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CategoryExclusionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CategoryExclusionsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CategoryExclusionsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> categoryId = const Value.absent(),
+                Value<int> transactionId = const Value.absent(),
+              }) => CategoryExclusionsCompanion(
+                id: id,
+                categoryId: categoryId,
+                transactionId: transactionId,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int categoryId,
+                required int transactionId,
+              }) => CategoryExclusionsCompanion.insert(
+                id: id,
+                categoryId: categoryId,
+                transactionId: transactionId,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$CategoryExclusionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CategoryExclusionsTable,
+      CategoryExclusion,
+      $$CategoryExclusionsTableFilterComposer,
+      $$CategoryExclusionsTableOrderingComposer,
+      $$CategoryExclusionsTableAnnotationComposer,
+      $$CategoryExclusionsTableCreateCompanionBuilder,
+      $$CategoryExclusionsTableUpdateCompanionBuilder,
+      (
+        CategoryExclusion,
+        BaseReferences<
+          _$AppDatabase,
+          $CategoryExclusionsTable,
+          CategoryExclusion
+        >,
+      ),
+      CategoryExclusion,
       PrefetchHooks Function()
     >;
 typedef $$GoalsTableCreateCompanionBuilder =
@@ -4296,6 +5504,10 @@ class $AppDatabaseManager {
       $$TransactionsTableTableManager(_db, _db.transactions);
   $$CategoriesTableTableManager get categories =>
       $$CategoriesTableTableManager(_db, _db.categories);
+  $$CategoryRulesTableTableManager get categoryRules =>
+      $$CategoryRulesTableTableManager(_db, _db.categoryRules);
+  $$CategoryExclusionsTableTableManager get categoryExclusions =>
+      $$CategoryExclusionsTableTableManager(_db, _db.categoryExclusions);
   $$GoalsTableTableManager get goals =>
       $$GoalsTableTableManager(_db, _db.goals);
   $$DebtsTableTableManager get debts =>
