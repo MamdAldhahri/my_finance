@@ -8,6 +8,7 @@ import '../services/debt_matching.dart';
 import '../services/derive.dart';
 import '../theme.dart';
 import '../widgets/category_resolver_builder.dart';
+import '../widgets/sms_body_dialog.dart';
 import '../widgets/transaction_row.dart';
 import '../widgets/ui.dart';
 
@@ -156,6 +157,11 @@ class _Body extends StatelessWidget {
                     txn: recent[i],
                     category: _categoryOf(recent[i]),
                     showDivider: i != recent.length - 1,
+                    showInitial: false,
+                    showUnknown: recent[i].source == TxSource.sms &&
+                        !recent[i].isCredit &&
+                        !resolver.isDebtPayment(recent[i]),
+                    onTap: () => showSmsBody(context, recent[i]),
                   ),
               ],
             ),
@@ -325,7 +331,7 @@ class _AccountRow extends StatelessWidget {
               ),
             ),
           ),
-          Text(
+          AmountText(
             money(account.balance),
             style: const TextStyle(
               fontSize: 14,

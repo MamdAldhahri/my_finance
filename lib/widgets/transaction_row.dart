@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../database/database.dart';
 import '../format.dart';
 import '../theme.dart';
+import 'ui.dart';
 
 /// One transaction line, shared by Overview's "Recent activity" and the
 /// Transactions list. [category] is the already-resolved category (auto or
@@ -101,7 +102,7 @@ class TransactionRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            Text(
+            AmountText(
               '${credit ? '+' : '-'}${money(txn.amount)}',
               style: TextStyle(
                 fontSize: 14,

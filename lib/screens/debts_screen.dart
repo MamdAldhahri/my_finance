@@ -605,7 +605,7 @@ class _PaymentRow extends StatelessWidget {
               ],
             ),
           ),
-          Text(money(payment.amount),
+          AmountText(money(payment.amount),
               style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
@@ -803,7 +803,7 @@ class _SmsPickerState extends State<_SmsPicker> {
                               ].join(' · '),
                               style: const TextStyle(fontSize: 11),
                             ),
-                            secondary: Text(money(t.amount),
+                            secondary: AmountText(money(t.amount),
                                 style: const TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w700)),

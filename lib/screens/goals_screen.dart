@@ -115,8 +115,8 @@ class _GoalCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'OMR ${amountText(goal.savedAmount)} of '
-                '${amountText(goal.targetAmount)}',
+                '${amountText(goal.savedAmount)} of '
+                '${money(goal.targetAmount)}',
                 style: const TextStyle(fontSize: 12, color: AppColors.muted),
               ),
               if (goal.targetDate != null)

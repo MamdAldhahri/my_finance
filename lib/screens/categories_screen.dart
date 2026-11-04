@@ -858,6 +858,19 @@ class _CategoriesList extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 18),
+        for (final c in categories) ...[
+          _CategoryCard(
+            category: c,
+            rules: [
+              for (final r in rules)
+                if (r.categoryId == c.id) r,
+            ],
+            spent: spent[c.id] ?? 0,
+            sharePct: total <= 0 ? 0 : ((spent[c.id] ?? 0) / total * 100),
+            onTap: () => onEdit(c),
+          ),
+          const SizedBox(height: 12),
+        ],
         _CategoryCard(
           category: const Category(
             id: _unknownCategoryId,
@@ -875,25 +888,11 @@ class _CategoriesList extends StatelessWidget {
           actionLabel: 'View ›',
           onTap: () => _showUnknown(context, unknown, periodLabel),
         ),
-        const SizedBox(height: 12),
         if (categories.isEmpty)
           const EmptyHint(
             'Every expense starts in Unknown. Open it and assign them to new '
             'categories, or tap + and pick example SMS.',
           ),
-        for (final c in categories) ...[
-          _CategoryCard(
-            category: c,
-            rules: [
-              for (final r in rules)
-                if (r.categoryId == c.id) r,
-            ],
-            spent: spent[c.id] ?? 0,
-            sharePct: total <= 0 ? 0 : ((spent[c.id] ?? 0) / total * 100),
-            onTap: () => onEdit(c),
-          ),
-          const SizedBox(height: 12),
-        ],
       ],
     );
   }
@@ -1709,7 +1708,7 @@ class _TxPreviewRow extends StatelessWidget {
               ],
             ),
           ),
-          Text('${txn.isCredit ? '+' : ''}${money(txn.amount)}',
+          AmountText('${txn.isCredit ? '+' : ''}${money(txn.amount)}',
               style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
@@ -1877,7 +1876,7 @@ class _CategorySmsPickerState extends State<_CategorySmsPicker> {
                               ].join(' · '),
                               style: const TextStyle(fontSize: 11),
                             ),
-                            secondary: Text(
+                            secondary: AmountText(
                                 '${t.isCredit ? '+' : ''}${money(t.amount)}',
                                 style: const TextStyle(
                                     fontSize: 13,

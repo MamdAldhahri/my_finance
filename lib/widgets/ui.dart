@@ -128,7 +128,7 @@ class SerifAmount extends StatelessWidget {
   final FontWeight weight;
 
   @override
-  Widget build(BuildContext context) => Text(
+  Widget build(BuildContext context) => AmountText(
         text,
         style: TextStyle(
           fontFamily: 'Newsreader',
@@ -138,6 +138,41 @@ class SerifAmount extends StatelessWidget {
           letterSpacing: -0.3,
         ),
       );
+}
+
+/// Shows a money label like "-0.399 OMR" with the trailing currency drawn
+/// smaller (and a little lighter) than the number. Text without a trailing
+/// " OMR" is shown as is.
+class AmountText extends StatelessWidget {
+  const AmountText(this.text, {super.key, this.style});
+
+  final String text;
+  final TextStyle? style;
+
+  static const _suffix = ' OMR';
+
+  @override
+  Widget build(BuildContext context) {
+    final base = DefaultTextStyle.of(context).style.merge(style);
+    if (!text.endsWith(_suffix)) return Text(text, style: base);
+    final size = base.fontSize ?? 14;
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(text: text.substring(0, text.length - _suffix.length)),
+          TextSpan(
+            text: _suffix,
+            style: TextStyle(
+              fontSize: size * 0.62,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.3,
+            ),
+          ),
+        ],
+      ),
+      style: base,
+    );
+  }
 }
 
 /// Uppercase section label ("YOUR ACCOUNTS") used inside dark cards.
