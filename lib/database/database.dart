@@ -268,6 +268,11 @@ class AppDatabase extends _$AppDatabase {
     return into(transactions).insert(entry);
   }
 
+  /// Sets the merchant / recipient name of transaction [id].
+  Future<void> setTransactionDescription(int id, String description) =>
+      (update(transactions)..where((t) => t.id.equals(id)))
+          .write(TransactionsCompanion(description: Value(description)));
+
   /// True when a transaction with this exact SMS body already exists. Used to
   /// dedupe live-received messages that arrive without a stable inbox id.
   Future<bool> transactionBodyExists(String rawMessage) async {

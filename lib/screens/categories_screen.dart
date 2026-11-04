@@ -2,14 +2,18 @@ import 'dart:math' as math;
 
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../database/database.dart';
 import '../format.dart';
 import '../main.dart';
 import '../services/category_matching.dart';
 import '../services/pay_cycle.dart';
+import '../services/view_period.dart';
 import '../theme.dart';
 import '../widgets/category_resolver_builder.dart';
+import '../widgets/sms_body_dialog.dart';
+import '../widgets/transaction_row.dart';
 import '../widgets/ui.dart';
 
 /// Categories tab: spending buckets filled automatically by rules picked from
@@ -101,8 +105,15 @@ const _draftRuleIdBase = 1 << 40;
 class _CategoriesScreenState extends State<CategoriesScreen> {
   bool _editing = false;
 
-  /// How many months back from the most recent activity to show (0 = latest).
-  int _monthOffset = 0;
+  /// Daily, monthly (salary to salary) or yearly totals.
+  PeriodKind _kind = PeriodKind.monthly;
+
+  /// How many periods back from the most recent activity to show (0 = latest).
+  int _offset = 0;
+
+  /// While editing a saved category, list only its SMS from the period picked
+  /// on the list view (false = every SMS ever matched).
+  bool _periodOnly = true;
 
   final _name = TextEditingController();
   final _shopName = TextEditingController();
@@ -144,6 +155,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     if (!mounted) return;
     setState(() {
       _existing = c;
+      _periodOnly = true;
       _name.text = c.name;
       _rules.addAll(
           rules.where((r) => r.categoryId == c.id).map(_DraftRule.of));
@@ -246,7 +258,8 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       for (final e in await db.allCategoryExclusions())
         if (e.categoryId == id) e.transactionId,
     };
-    for (final txId in _removed.difference(before)) {
+    final newlyRemoved = _removed.difference(before);
+    for (final txId in newlyRemoved) {
       await db.excludeFromCategory(id, txId);
     }
     for (final txId in before.difference(_removed)) {
@@ -261,7 +274,89 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
         await db.setTransactionCategory(txId, null);
       }
     }
+    // A removed message goes to Unknown, not into whichever other category
+    // also has a matching rule.
+    for (final txId in newlyRemoved) {
+      final t = await db.transactionById(txId);
+      if (t != null) await removeTransactionFromCategory(db, t);
+    }
     _cancel();
+  }
+
+  /// Asks before deleting a matching-SMS rule. On yes the rule is dropped
+  /// (applied on Save) and the SMS it brought in go back to Unknown.
+  Future<void> _confirmDeleteRule(_DraftRule rule) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: const Text('Remove this matching SMS?',
+            style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppColors.ink)),
+        content: Text(
+          'Messages from "${rule.counterparty}" will stop filing here and '
+          'move to Unknown.',
+          style: const TextStyle(fontSize: 14, color: AppColors.ink),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel',
+                style: TextStyle(color: AppColors.muted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Remove',
+                style: TextStyle(
+                    fontWeight: FontWeight.w700, color: AppColors.green)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _rules.remove(rule));
+  }
+
+  /// Asks before taking [t] out of the category being edited. On yes it is
+  /// marked removed (applied on Save) and will show under Unknown.
+  Future<void> _confirmRemove(Transaction t) async {
+    final name = t.description.isEmpty ? 'Payment' : t.description;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: const Text('Remove this message?',
+            style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppColors.ink)),
+        content: Text(
+          '$name · ${money(t.amount)} on ${shortDate(t.date)} will move to '
+          'Unknown. Other messages from the same place stay in this category.',
+          style: const TextStyle(fontSize: 14, color: AppColors.ink),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel',
+                style: TextStyle(color: AppColors.muted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Remove',
+                style: TextStyle(
+                    fontWeight: FontWeight.w700, color: AppColors.green)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() {
+      _pinned.remove(t.id);
+      _removed.add(t.id);
+    });
   }
 
   @override
@@ -288,9 +383,18 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                   rules: ruleSnap.data ?? const [],
                   resolver: resolver,
                   txns: txns,
-                  monthOffset: _monthOffset,
-                  onStepMonth: (delta) => setState(() =>
-                      _monthOffset = (_monthOffset + delta).clamp(0, 120)),
+                  kind: _kind,
+                  offset: _offset,
+                  onKind: (kind) => setState(() {
+                    _kind = kind;
+                    _offset = 0;
+                  }),
+                  onStep: (delta) => setState(() =>
+                      _offset = (_offset + delta).clamp(0, _kind.maxOffset)),
+                  onOpenMonth: (monthOffset) => setState(() {
+                    _kind = PeriodKind.monthly;
+                    _offset = monthOffset.clamp(0, PeriodKind.monthly.maxOffset);
+                  }),
                   onAdd: _startAdd,
                   onEdit: _startEdit,
                 );
@@ -360,13 +464,26 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       ],
       debtPayments: payments,
     );
+    // A saved category opens on the period picked in the list view (the
+    // same day / pay cycle / year). A new one shows every match.
+    final ViewPeriod? period;
+    if (_existing != null && _periodOnly) {
+      DateTime? latest;
+      for (final t in txns) {
+        if (latest == null || t.date.isAfter(latest)) latest = t.date;
+      }
+      period = viewPeriod(_kind, _offset,
+          cycles: PayCycles.fromTransactions(txns), latestActivity: latest);
+    } else {
+      period = null;
+    }
     final matched = <Transaction>[];
     final removed = <Transaction>[];
     for (final t in txns) {
       if (_removed.contains(t.id)) {
         removed.add(t);
-      } else if (_pinned.contains(t.id) ||
-          resolver.categoryIdFor(t) == draftId) {
+      } else if ((period == null || period.contains(t.date)) &&
+          (_pinned.contains(t.id) || resolver.categoryIdFor(t) == draftId)) {
         matched.add(t);
       }
     }
@@ -413,7 +530,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                     showDivider: i != _rules.length - 1,
                     onToggleAmount: () => setState(
                         () => _rules[i].matchAmount = !_rules[i].matchAmount),
-                    onDelete: () => setState(() => _rules.removeAt(i)),
+                    onDelete: () => _confirmDeleteRule(_rules[i]),
                   ),
               ],
             ),
@@ -443,9 +560,29 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
           ],
         ),
         const SizedBox(height: 22),
-        Text('In this category (${matched.length})',
-            style: const TextStyle(
-                fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.ink)),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                  period == null
+                      ? 'In this category (${matched.length})'
+                      : 'In this category · ${period.label} (${matched.length})',
+                  style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.ink)),
+            ),
+            if (_existing != null)
+              TextButton(
+                onPressed: () => setState(() => _periodOnly = !_periodOnly),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.green,
+                  visualDensity: VisualDensity.compact,
+                ),
+                child: Text(_periodOnly ? 'Show all' : 'This period'),
+              ),
+          ],
+        ),
         const SizedBox(height: 4),
         const Text(
           'Tap ✕ to take out just that one transaction. SMS counted as a debt '
@@ -454,7 +591,9 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
         ),
         const SizedBox(height: 10),
         if (matched.isEmpty)
-          const EmptyHint('Nothing matches yet.')
+          EmptyHint(period == null
+              ? 'Nothing matches yet.'
+              : 'No SMS in this category for ${period.label}.')
         else
           AppCard(
             padding: EdgeInsets.zero,
@@ -466,10 +605,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                     showDivider: i != matched.length - 1 && i != shown - 1,
                     actionIcon: Icons.close,
                     actionTooltip: 'Remove from this category',
-                    onAction: () => setState(() {
-                      _pinned.remove(matched[i].id);
-                      _removed.add(matched[i].id);
-                    }),
+                    onAction: () => _confirmRemove(matched[i]),
                   ),
                 if (matched.length > shown)
                   Padding(
@@ -548,8 +684,11 @@ class _CategoriesList extends StatelessWidget {
     required this.rules,
     required this.resolver,
     required this.txns,
-    required this.monthOffset,
-    required this.onStepMonth,
+    required this.kind,
+    required this.offset,
+    required this.onKind,
+    required this.onStep,
+    required this.onOpenMonth,
     required this.onAdd,
     required this.onEdit,
   });
@@ -558,23 +697,28 @@ class _CategoriesList extends StatelessWidget {
   final List<CategoryRule> rules;
   final CategoryResolver resolver;
   final List<Transaction> txns;
-  final int monthOffset;
-  final ValueChanged<int> onStepMonth;
+  final PeriodKind kind;
+  final int offset;
+  final ValueChanged<PeriodKind> onKind;
+  final ValueChanged<int> onStep;
+
+  /// Opens the Monthly view this many pay cycles back from the latest.
+  final ValueChanged<int> onOpenMonth;
   final VoidCallback onAdd;
   final ValueChanged<Category> onEdit;
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
-    // Months run salary to salary (see PayCycles). Base the view on the
-    // current cycle, or a later one if a transaction is dated after it.
-    // [monthOffset] steps back one cycle at a time.
+    // Months run salary to salary (see PayCycles); a year is twelve of them.
+    // The view starts at today, or a later period if a transaction is dated
+    // after it. [offset] steps back one period at a time.
     final cycles = PayCycles.fromTransactions(txns);
-    var base = cycles.current;
+    DateTime? latest;
     for (final t in txns) {
-      if (!t.date.isBefore(base.end)) base = cycles.cycleFor(t.date);
+      if (latest == null || t.date.isAfter(latest)) latest = t.date;
     }
-    final period = cycles.shift(base, -monthOffset);
+    final period =
+        viewPeriod(kind, offset, cycles: cycles, latestActivity: latest);
 
     // Every expense this month lands in exactly one bucket: a category, the
     // debts (confirmed debt payments), or Unknown (everything else).
@@ -615,13 +759,9 @@ class _CategoriesList extends StatelessWidget {
       if (remaining > 0)
         _PieSlice('Remaining income', remaining, AppColors.mint),
     ];
-    final periodLabel = period.start.year == now.year
-        ? period.label(now: now)
-        : '${period.label(now: now)} ${period.start.year}';
+    final periodLabel = period.label;
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-      children: [
+    final header = <Widget>[
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -646,7 +786,31 @@ class _CategoriesList extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
+        _PeriodSwitcher(selected: kind, onChanged: onKind),
+        const SizedBox(height: 14),
+    ];
+    if (kind == PeriodKind.yearly) {
+      return _YearlyView(
+        header: header,
+        year: period.start.year,
+        txns: txns,
+        categories: categories,
+        resolver: resolver,
+        cycles: cycles,
+        latest: latest,
+        canGoNewer: offset > 0,
+        onStep: onStep,
+        onOpenMonth: onOpenMonth,
+        onEdit: onEdit,
+        onUnknown: (unknown, label) => _showUnknown(context, unknown, label),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      children: [
+        ...header,
         DarkCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -654,18 +818,21 @@ class _CategoriesList extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  MutedCaps('Spent · $periodLabel', color: Colors.white54),
+                  Flexible(
+                    child: MutedCaps('Spent · $periodLabel',
+                        color: Colors.white54),
+                  ),
                   Row(
                     children: [
                       _StepArrow(
                         icon: Icons.chevron_left,
-                        onTap: () => onStepMonth(1), // older
+                        onTap: () => onStep(1), // older
                       ),
                       const SizedBox(width: 4),
                       _StepArrow(
                         icon: Icons.chevron_right,
-                        // Can't go newer than the latest activity month.
-                        onTap: monthOffset == 0 ? null : () => onStepMonth(-1),
+                        // Can't go newer than the latest activity period.
+                        onTap: offset == 0 ? null : () => onStep(-1),
                       ),
                     ],
                   ),
@@ -691,19 +858,6 @@ class _CategoriesList extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 18),
-        for (final c in categories) ...[
-          _CategoryCard(
-            category: c,
-            rules: [
-              for (final r in rules)
-                if (r.categoryId == c.id) r,
-            ],
-            spent: spent[c.id] ?? 0,
-            sharePct: total <= 0 ? 0 : ((spent[c.id] ?? 0) / total * 100),
-            onTap: () => onEdit(c),
-          ),
-          const SizedBox(height: 12),
-        ],
         _CategoryCard(
           category: const Category(
             id: _unknownCategoryId,
@@ -721,10 +875,25 @@ class _CategoriesList extends StatelessWidget {
           actionLabel: 'View ›',
           onTap: () => _showUnknown(context, unknown, periodLabel),
         ),
+        const SizedBox(height: 12),
         if (categories.isEmpty)
           const EmptyHint(
-            'Tap + and pick example SMS to create your first category.',
+            'Every expense starts in Unknown. Open it and assign them to new '
+            'categories, or tap + and pick example SMS.',
           ),
+        for (final c in categories) ...[
+          _CategoryCard(
+            category: c,
+            rules: [
+              for (final r in rules)
+                if (r.categoryId == c.id) r,
+            ],
+            spent: spent[c.id] ?? 0,
+            sharePct: total <= 0 ? 0 : ((spent[c.id] ?? 0) / total * 100),
+            onTap: () => onEdit(c),
+          ),
+          const SizedBox(height: 12),
+        ],
       ],
     );
   }
@@ -773,6 +942,8 @@ class _UnknownSheet extends StatefulWidget {
 class _UnknownSheetState extends State<_UnknownSheet> {
   late List<Transaction> _txns = [...widget.txns]
     ..sort((a, b) => b.date.compareTo(a.date));
+  // Grows when a category is created from the picker below.
+  late List<Category> _categories = widget.categories;
 
   Future<void> _assign(Transaction t) async {
     final picked = await showModalBottomSheet<Category>(
@@ -784,11 +955,12 @@ class _UnknownSheetState extends State<_UnknownSheet> {
       ),
       builder: (context) => _CategoryChoiceSheet(
         txn: t,
-        categories: widget.categories,
+        categories: _categories,
       ),
     );
     if (picked == null) return;
     await fileTransactionToCategory(db, t, picked);
+    _categories = await db.allCategories();
 
     // Drop everything that now has a home (the new rule may catch others).
     final resolver = await CategoryResolver.load(db);
@@ -835,7 +1007,7 @@ class _UnknownSheetState extends State<_UnknownSheet> {
           const SizedBox(height: 10),
           Flexible(
             child: _txns.isEmpty
-                ? const EmptyHint('Nothing left here this month.')
+                ? const EmptyHint('Nothing left here for this period.')
                 : ListView.separated(
                     shrinkWrap: true,
                     itemCount: _txns.length,
@@ -843,7 +1015,9 @@ class _UnknownSheetState extends State<_UnknownSheet> {
                         const Divider(height: 1, color: AppColors.cardBorder),
                     itemBuilder: (context, i) {
                       final t = _txns[i];
-                      return Padding(
+                      return InkWell(
+                        onTap: () => showSmsBody(context, t),
+                        child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         child: Row(
                           children: [
@@ -865,7 +1039,7 @@ class _UnknownSheetState extends State<_UnknownSheet> {
                                   Text(
                                     [
                                       shortDate(t.date),
-                                      if (t.card.isNotEmpty) '••••${t.card}',
+                                      if (t.source == TxSource.sms) bankName(t.sender),
                                       money(t.amount),
                                     ].join(' · '),
                                     style: const TextStyle(
@@ -896,6 +1070,7 @@ class _UnknownSheetState extends State<_UnknownSheet> {
                             ),
                           ],
                         ),
+                        ),
                       );
                     },
                   ),
@@ -906,12 +1081,59 @@ class _UnknownSheetState extends State<_UnknownSheet> {
   }
 }
 
-/// Pick a category for one Unknown expense. Pops with the chosen category.
+/// Pick a category for one Unknown expense, or create one on the spot.
+/// Pops with the chosen category.
 class _CategoryChoiceSheet extends StatelessWidget {
   const _CategoryChoiceSheet({required this.txn, required this.categories});
 
   final Transaction txn;
   final List<Category> categories;
+
+  /// Asks for a name, creates the category and pops the sheet with it.
+  Future<void> _createAndPick(BuildContext context) async {
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: const Text('New category',
+            style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppColors.ink)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(hintText: 'e.g. Groceries'),
+          onSubmitted: (v) => Navigator.pop(context, v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel',
+                style: TextStyle(color: AppColors.muted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Create',
+                style: TextStyle(
+                    fontWeight: FontWeight.w700, color: AppColors.green)),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    final trimmed = name?.trim() ?? '';
+    if (trimmed.isEmpty) return;
+    final count = (await db.allCategories()).length;
+    final color =
+        '#${AppColors.paletteAt(count).toARGB32().toRadixString(16).substring(2).toUpperCase()}';
+    final id = await db.addCategory(
+        CategoriesCompanion.insert(name: trimmed, color: Value(color)));
+    final created = await db.categoryById(id);
+    if (created != null && context.mounted) Navigator.pop(context, created);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -937,14 +1159,31 @@ class _CategoryChoiceSheet extends StatelessWidget {
             style: const TextStyle(fontSize: 12, color: AppColors.muted),
           ),
           const SizedBox(height: 10),
-          if (categories.isEmpty)
-            const EmptyHint(
-                'No categories yet. Close this and tap + to create one.')
-          else
-            Flexible(
+          Flexible(
               child: ListView(
                 shrinkWrap: true,
                 children: [
+                  InkWell(
+                    onTap: () => _createAndPick(context),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      decoration: const BoxDecoration(
+                        border: Border(
+                            bottom: BorderSide(color: AppColors.cardBorder)),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.add, size: 18, color: AppColors.green),
+                          SizedBox(width: 8),
+                          Text('New category',
+                              style: TextStyle(
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.green)),
+                        ],
+                      ),
+                    ),
+                  ),
                   for (final c in categories)
                     InkWell(
                       onTap: () => Navigator.pop(context, c),
@@ -1050,15 +1289,15 @@ class _SpendingPie extends StatelessWidget {
 }
 
 class _DonutPainter extends CustomPainter {
-  _DonutPainter(this.slices);
+  _DonutPainter(this.slices, {this.stroke = 16});
 
   final List<_PieSlice> slices;
+  final double stroke;
 
   @override
   void paint(Canvas canvas, Size size) {
     final total = slices.fold<double>(0, (s, x) => s + x.value);
     if (total <= 0) return;
-    const stroke = 16.0;
     final rect = Rect.fromCircle(
       center: size.center(Offset.zero),
       radius: math.min(size.width, size.height) / 2 - stroke / 2,
@@ -1085,7 +1324,8 @@ class _DonutPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_DonutPainter old) => old.slices != slices;
+  bool shouldRepaint(_DonutPainter old) =>
+      old.slices != slices || old.stroke != stroke;
 }
 
 class _CategoryCard extends StatelessWidget {
@@ -1199,6 +1439,53 @@ class _FlowHeader extends StatelessWidget {
 }
 
 /// A small circular ‹ / › month-stepper button used on the Categories hero.
+/// Daily / Monthly / Yearly pill switcher above the spending card.
+class _PeriodSwitcher extends StatelessWidget {
+  const _PeriodSwitcher({required this.selected, required this.onChanged});
+
+  final PeriodKind selected;
+  final ValueChanged<PeriodKind> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: AppColors.track,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          for (final k in PeriodKind.values)
+            Expanded(
+              child: InkWell(
+                onTap: k == selected ? null : () => onChanged(k),
+                borderRadius: BorderRadius.circular(9),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: k == selected ? AppColors.ink : Colors.transparent,
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                  child: Text(
+                    k.label,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: k == selected ? Colors.white : AppColors.muted,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _StepArrow extends StatelessWidget {
   const _StepArrow({required this.icon, required this.onTap});
 
@@ -1295,7 +1582,7 @@ class _RuleRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final details = [
-      rule.sender.isEmpty ? 'Any bank' : rule.sender,
+      rule.sender.isEmpty ? 'Any bank' : bankName(rule.sender),
       if (rule.isCredit == true) 'money in',
       if (rule.isCredit == false) 'money out',
       if (!rule.exact) 'name contains',
@@ -1388,7 +1675,9 @@ class _TxPreviewRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return InkWell(
+      onTap: () => showSmsBody(context, txn),
+      child: Container(
       decoration: BoxDecoration(
         border: showDivider
             ? const Border(bottom: BorderSide(color: AppColors.cardBorder))
@@ -1413,7 +1702,7 @@ class _TxPreviewRow extends StatelessWidget {
                 Text(
                   [
                     shortDate(txn.date),
-                    if (txn.card.isNotEmpty) '••••${txn.card}',
+                    if (txn.source == TxSource.sms) bankName(txn.sender),
                   ].join(' · '),
                   style: const TextStyle(fontSize: 11, color: AppColors.muted),
                 ),
@@ -1431,6 +1720,7 @@ class _TxPreviewRow extends StatelessWidget {
             icon: Icon(actionIcon, size: 18, color: AppColors.faint),
           ),
         ],
+      ),
       ),
     );
   }
@@ -1583,7 +1873,7 @@ class _CategorySmsPickerState extends State<_CategorySmsPicker> {
                             subtitle: Text(
                               [
                                 shortDate(t.date),
-                                if (t.card.isNotEmpty) '••••${t.card}',
+                                if (t.source == TxSource.sms) bankName(t.sender),
                               ].join(' · '),
                               style: const TextStyle(fontSize: 11),
                             ),
@@ -1609,6 +1899,558 @@ class _CategorySmsPickerState extends State<_CategorySmsPicker> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ---- Yearly view -----------------------------------------------------------
+
+/// Where one stretch of time's money went: every expense lands in exactly one
+/// bucket (a category, debt payments, or Unknown), as on the monthly view.
+class _Breakdown {
+  _Breakdown(Iterable<Transaction> txns, CategoryResolver resolver) {
+    for (final t in txns) {
+      count++;
+      if (t.isCredit) {
+        income += t.amount;
+        continue;
+      }
+      final id = resolver.categoryIdFor(t);
+      if (id != null) {
+        spent[id] = (spent[id] ?? 0) + t.amount;
+      } else if (resolver.isDebtPayment(t)) {
+        debt += t.amount;
+      } else {
+        unknown.add(t);
+        unknownTotal += t.amount;
+      }
+    }
+  }
+
+  final spent = <int, double>{};
+  final unknown = <Transaction>[];
+  double unknownTotal = 0;
+  double debt = 0;
+  double income = 0;
+  int count = 0;
+
+  double get total =>
+      spent.values.fold<double>(0, (s, v) => s + v) + unknownTotal + debt;
+  double get saved => income - total;
+
+  /// Out of income, plus what's left as a mint slice.
+  List<_PieSlice> slices(List<Category> categories) => [
+        for (final c in categories)
+          if ((spent[c.id] ?? 0) > 0)
+            _PieSlice(c.name, spent[c.id]!, hexColor(c.color)),
+        if (unknownTotal > 0)
+          _PieSlice(_unknownName, unknownTotal, _unknownColor),
+        if (debt > 0) _PieSlice('Debt payments', debt, AppColors.peach),
+        if (saved > 0) _PieSlice('Saved', saved, AppColors.mint),
+      ];
+}
+
+/// Yearly: the year's total on top, then one box per pay cycle (Jan–Dec).
+class _YearlyView extends StatelessWidget {
+  const _YearlyView({
+    required this.header,
+    required this.year,
+    required this.txns,
+    required this.categories,
+    required this.resolver,
+    required this.cycles,
+    required this.latest,
+    required this.canGoNewer,
+    required this.onStep,
+    required this.onOpenMonth,
+    required this.onEdit,
+    required this.onUnknown,
+  });
+
+  final List<Widget> header;
+  final int year;
+  final List<Transaction> txns;
+  final List<Category> categories;
+  final CategoryResolver resolver;
+  final PayCycles cycles;
+  final DateTime? latest;
+  final bool canGoNewer;
+  final ValueChanged<int> onStep;
+  final ValueChanged<int> onOpenMonth;
+  final ValueChanged<Category> onEdit;
+  final void Function(List<Transaction> unknown, String label) onUnknown;
+
+  static const _monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June', 'July', //
+    'August', 'September', 'October', 'November', 'December',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final now = cycles.now;
+    final top = latest != null && latest!.isAfter(now) ? latest! : now;
+    final latestCycle = cycles.cycleFor(top);
+    int monthIndex(DateTime m) => m.year * 12 + m.month;
+
+    // One pay cycle per calendar month of [year].
+    final months = <_MonthBox>[];
+    for (var m = 1; m <= 12; m++) {
+      final cycle = cycles.cycleFor(DateTime(year, m, 28));
+      final b = _Breakdown(txns.where((t) => cycle.contains(t.date)), resolver);
+      final notStarted = cycle.start.isAfter(top);
+      months.add(_MonthBox(
+        name: _monthNames[m - 1],
+        cycle: cycle,
+        breakdown: b,
+        running: cycle.contains(now),
+        future: notStarted && b.count == 0,
+        monthOffset:
+            monthIndex(latestCycle.anchorMonth) - monthIndex(cycle.anchorMonth),
+      ));
+    }
+    final started = months.where((m) => !m.future).toList();
+    final yearStart = months.first.cycle.start;
+    final yearEnd = months.last.cycle.end;
+    final yearly = _Breakdown(
+      txns.where((t) => !t.date.isBefore(yearStart) && t.date.isBefore(yearEnd)),
+      resolver,
+    );
+    _MonthBox? biggest;
+    for (final m in started) {
+      if (m.breakdown.total > 0 &&
+          (biggest == null || m.breakdown.total > biggest.breakdown.total)) {
+        biggest = m;
+      }
+    }
+    final avg = started.isEmpty ? 0.0 : yearly.total / started.length;
+    final savedPct =
+        yearly.income <= 0 ? 0 : (yearly.saved / yearly.income * 100).round();
+    final yearSlices = yearly.slices(categories);
+    final rangeLabel = 'Pay cycles since ${DateFormat('d MMM').format(yearStart)}';
+
+    final legend = <_PieSlice>[
+      for (final c in categories)
+        if ((yearly.spent[c.id] ?? 0) > 0)
+          _PieSlice(c.name, 0, hexColor(c.color)),
+      if (yearly.unknownTotal > 0) const _PieSlice(_unknownName, 0, _unknownColor),
+      if (yearly.debt > 0) const _PieSlice('Debt', 0, AppColors.peach),
+      const _PieSlice('Saved', 0, AppColors.mint),
+    ];
+
+    final rows = <Widget>[];
+    for (var i = 0; i < months.length; i += 2) {
+      rows.add(Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: _monthTile(months[i], biggest, categories)),
+              const SizedBox(width: 10),
+              Expanded(child: _monthTile(months[i + 1], biggest, categories)),
+            ],
+          ),
+        ),
+      ));
+    }
+
+    const white70 = TextStyle(fontSize: 11, color: Colors.white70);
+    Widget stat(String label, String value, {Color color = Colors.white}) =>
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: white70),
+            const SizedBox(height: 2),
+            SerifAmount(value, size: 17, color: color),
+          ],
+        );
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      children: [
+        ...header,
+        Row(
+          children: [
+            _YearArrow(
+              icon: Icons.chevron_left,
+              label: 'Previous year',
+              onTap: () => onStep(1),
+            ),
+            Expanded(
+              child: Column(
+                children: [
+                  SerifAmount('$year', size: 24),
+                  Text(rangeLabel,
+                      style:
+                          const TextStyle(fontSize: 11.5, color: AppColors.muted)),
+                ],
+              ),
+            ),
+            _YearArrow(
+              icon: Icons.chevron_right,
+              label: 'Next year',
+              onTap: canGoNewer ? () => onStep(-1) : null,
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        DarkCard(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              MutedCaps(
+                  '$year total · ${started.length} of 12 months',
+                  color: Colors.white54),
+              const SizedBox(height: 6),
+              const Text('Spent', style: white70),
+              SerifAmount(money(yearly.total), size: 26, color: Colors.white),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  SizedBox(
+                    width: 120,
+                    height: 120,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Positioned.fill(
+                          child: CustomPaint(
+                              painter: _DonutPainter(yearSlices, stroke: 18)),
+                        ),
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SerifAmount('$savedPct%',
+                                size: 22, color: Colors.white),
+                            const Text('saved',
+                                style: TextStyle(
+                                    fontSize: 10, color: Colors.white70)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 18),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        stat('Income', amountText(yearly.income)),
+                        const SizedBox(height: 8),
+                        stat('Saved', amountText(yearly.saved),
+                            color: yearly.saved >= 0
+                                ? AppColors.mint
+                                : AppColors.peach),
+                        const SizedBox(height: 8),
+                        stat('Average month', amountText(avg)),
+                        if (biggest != null) ...[
+                          const SizedBox(height: 8),
+                          stat('Biggest month',
+                              '${biggest.name.substring(0, 3)} · ${amountText(biggest.breakdown.total)}'),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              const Divider(color: Colors.white12, height: 1),
+              const SizedBox(height: 6),
+              for (final c in categories)
+                if ((yearly.spent[c.id] ?? 0) > 0)
+                  _yearRow(
+                    color: hexColor(c.color),
+                    name: c.name,
+                    value: yearly.spent[c.id]!,
+                    total: yearly.total,
+                    onTap: () => onEdit(c),
+                  ),
+              if (yearly.debt > 0)
+                _yearRow(
+                  color: AppColors.peach,
+                  name: 'Debt payments',
+                  value: yearly.debt,
+                  total: yearly.total,
+                ),
+              if (yearly.unknownTotal > 0)
+                _yearRow(
+                  color: _unknownColor,
+                  name: _unknownName,
+                  value: yearly.unknownTotal,
+                  total: yearly.total,
+                  onTap: () => onUnknown(yearly.unknown, '$year'),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 12,
+          runSpacing: 6,
+          children: [
+            for (final l in legend)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Dot(l.color, size: 8),
+                  const SizedBox(width: 5),
+                  Text(l.label,
+                      style:
+                          const TextStyle(fontSize: 11, color: AppColors.muted)),
+                ],
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        ...rows,
+      ],
+    );
+  }
+
+  Widget _yearRow({
+    required Color color,
+    required String name,
+    required double value,
+    required double total,
+    VoidCallback? onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 7),
+        child: Row(
+          children: [
+            Dot(color, size: 10),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, color: Colors.white)),
+            ),
+            Text(total <= 0 ? '' : '${(value / total * 100).round()}%',
+                style: const TextStyle(fontSize: 12, color: Colors.white70)),
+            SizedBox(
+              width: 92,
+              child: Text(amountText(value),
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _monthTile(
+      _MonthBox m, _MonthBox? biggest, List<Category> categories) {
+    final range = m.cycle.label(now: cycles.now);
+    if (m.future) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.inactive, width: 1.5),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(m.name,
+                style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink)),
+            const SizedBox(height: 2),
+            Text('From ${DateFormat('d MMM').format(m.cycle.start)}',
+                style: const TextStyle(fontSize: 11, color: AppColors.muted)),
+            const SizedBox(height: 28),
+            const Center(
+              child: Text('Not started yet',
+                  style: TextStyle(fontSize: 12, color: AppColors.muted)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final dark = m.running;
+    final ink = dark ? Colors.white : AppColors.ink;
+    final muted = dark ? Colors.white70 : AppColors.muted;
+    final b = m.breakdown;
+    final whole = math.max(b.income, b.total);
+    final pct = b.income <= 0 ? null : (b.total / b.income * 100).round();
+    final tag = m.running
+        ? 'Running'
+        : identical(m, biggest)
+            ? 'Highest'
+            : null;
+
+    return Material(
+      color: dark ? AppColors.ink : Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: m.monthOffset >= 0 ? () => onOpenMonth(m.monthOffset) : null,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+                color: dark ? AppColors.ink : AppColors.cardBorder),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(m.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: ink)),
+                  ),
+                  if (tag != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: m.running
+                            ? AppColors.mint
+                            : const Color(0xFFFBE3D8),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(tag,
+                          style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: m.running
+                                  ? AppColors.ink
+                                  : const Color(0xFF8A3F28))),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text(range, style: TextStyle(fontSize: 11, color: muted)),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  SizedBox(
+                    width: 60,
+                    height: 60,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Positioned.fill(
+                          child: CustomPaint(
+                            painter: _DonutPainter(
+                              whole <= 0
+                                  ? const [
+                                      _PieSlice('', 1, AppColors.track),
+                                    ]
+                                  : b.slices(categories),
+                              stroke: 9,
+                            ),
+                          ),
+                        ),
+                        Text(pct == null ? '–' : '$pct%',
+                            style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w700,
+                                color: ink)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Spent', style: TextStyle(fontSize: 11, color: muted)),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: SerifAmount(amountText(b.total),
+                              size: 15, color: ink),
+                        ),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            b.saved >= 0
+                                ? 'saved ${amountText(b.saved)}'
+                                : 'over ${amountText(b.saved)}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: b.saved >= 0
+                                  ? (dark ? AppColors.mint : AppColors.green)
+                                  : (dark
+                                      ? AppColors.peach
+                                      : AppColors.terracotta),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MonthBox {
+  _MonthBox({
+    required this.name,
+    required this.cycle,
+    required this.breakdown,
+    required this.running,
+    required this.future,
+    required this.monthOffset,
+  });
+
+  final String name;
+  final PayCycle cycle;
+  final _Breakdown breakdown;
+  final bool running;
+  final bool future;
+
+  /// How many cycles back from the latest this is, for the Monthly view.
+  final int monthOffset;
+}
+
+class _YearArrow extends StatelessWidget {
+  const _YearArrow({required this.icon, required this.label, this.onTap});
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return IconButton(
+      onPressed: onTap,
+      tooltip: label,
+      style: IconButton.styleFrom(
+        backgroundColor: enabled ? const Color(0xFFECE7DC) : AppColors.track,
+        minimumSize: const Size(44, 44),
+      ),
+      icon: Icon(icon,
+          color: enabled ? AppColors.ink : AppColors.inactive, size: 20),
     );
   }
 }

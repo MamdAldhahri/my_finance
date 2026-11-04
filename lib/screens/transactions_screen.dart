@@ -8,6 +8,7 @@ import '../services/pay_cycle.dart';
 import '../services/sms_import.dart';
 import '../theme.dart';
 import '../widgets/category_resolver_builder.dart';
+import '../widgets/sms_body_dialog.dart';
 import '../widgets/transaction_row.dart';
 import '../widgets/ui.dart';
 
@@ -240,7 +241,17 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     txn: filtered[i],
                     category: _resolve(filtered[i], categories, resolver),
                     showDivider: i != filtered.length - 1,
-                    onTap: () => _openCategorySheet(filtered[i]),
+                    showInitial: false,
+                    // Same rule as the Unknown card on Categories: an
+                    // expense SMS with no category that isn't a debt payment.
+                    showUnknown: filtered[i].source == TxSource.sms &&
+                        !filtered[i].isCredit &&
+                        !resolver.isDebtPayment(filtered[i]),
+                    onTap: () => showSmsBody(
+                      context,
+                      filtered[i],
+                      onChangeCategory: () => _openCategorySheet(filtered[i]),
+                    ),
                   ),
               ],
             ),

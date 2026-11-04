@@ -72,7 +72,7 @@ const _debitWords = [
   'you have sent',
   'تم خصم',
   'بإستخدام بطاقة الخصم المباشر',
-  ' لقد قمت بإرسال',
+  'لقد قمت بإرسال',
   'من حسابك',
 ];
 
@@ -139,6 +139,9 @@ const _creditWords = [
   'added',
   'transfer from',
   'transferred from',
+  'تم قيد راتبك',
+  'تم إيداع',
+  'لقد استلمت',
 ];
 
 /// Matches a currency + amount in either order:
@@ -197,6 +200,28 @@ final _merchantArPattern = RegExp(
   unicode: true,
 );
 
+/// Arabic card-purchase alerts name the shop after في ("at"), prefixed by a
+/// terminal id, e.g. "… الخصم المباشر في 451840-ThawaniPay APP بتاريخ …" →
+/// "ThawaniPay APP". Stops at the date / balance clause or punctuation.
+final _merchantArAtPattern = RegExp(
+  r'(?:^|\s)في\s+(\S.{0,40}?)'
+  r'(?=\s+(?:بتاريخ|رصيد|من|عبر|رقم)|[.,;\n]|$)',
+  caseSensitive: false,
+  unicode: true,
+);
+
+/// A leading terminal / merchant id glued to the shop name ("451840-").
+final _terminalIdPrefix = RegExp(r'^\d+\s*-\s*');
+
+/// Words that follow "from"/"to" in a sentence but are not a name — "withdrawn
+/// from your a/c …", "transferred from your account …". Taking them as the
+/// name would give every such alert the same name, so filing one ATM
+/// withdrawal would drag every transfer along with it.
+const _notANameWords = {'your', 'you', 'my', 'the', 'a', 'an'};
+
+/// ATM cash withdrawals ("through ATM11353226", "at ATM", "ATM on …").
+final _atmPattern = RegExp(r'\batm', caseSensitive: false);
+
 /// Parses [body]; returns null when it is not a recognisable bank alert.
 ParsedTransaction? parseBankSms(String body) {
   final text = body.replaceAll(RegExp(r'\s+'), ' ').trim();
@@ -251,8 +276,10 @@ double? _extractBalance(String text) {
 }
 
 String _extractCard(String text) {
-  final token = (_cardPattern.firstMatch(text) ?? _cardArPattern.firstMatch(text))
-      ?.group(1);
+  final token =
+      (_cardPattern.firstMatch(text) ?? _cardArPattern.firstMatch(text))?.group(
+        1,
+      );
   if (token == null) return '';
   // Keep only real digits (drop the X / * mask characters), then the last 4 —
   // that is the part that tells one card apart from another.
@@ -337,10 +364,22 @@ DateTime? _extractDate(String text) {
 }
 
 String? _extractMerchant(String text) {
-  final m = _merchantPattern.firstMatch(text) ?? _merchantArPattern.firstMatch(text);
-  final name = m?.group(1)?.trim();
+  String? name;
+  for (final m in _merchantPattern.allMatches(text)) {
+    final candidate = m.group(1)!.trim();
+    final first = candidate.split(' ').first.toLowerCase();
+    if (_notANameWords.contains(first)) continue;
+    name = candidate;
+    break;
+  }
+  name ??= _merchantArPattern.firstMatch(text)?.group(1)?.trim();
+  if (name == null) {
+    final at = _merchantArAtPattern.firstMatch(text)?.group(1)?.trim();
+    final shop = at?.replaceFirst(_terminalIdPrefix, '').trim();
+    // Must contain a letter, so "في 2026/10/31" is never taken as a shop.
+    if (shop != null && RegExp(r'[^\d\s/:.\-]').hasMatch(shop)) name = shop;
+  }
+  if (name == null && _atmPattern.hasMatch(text)) name = 'ATM';
   if (name == null || name.isEmpty) return null;
-  // Drop trailing filler words the greedy stop might leave behind.
-  final cleaned = name.replaceAll(RegExp(r'\s{2,}'), ' ');
-  return cleaned;
+  return name.replaceAll(RegExp(r'\s{2,}'), ' ');
 }

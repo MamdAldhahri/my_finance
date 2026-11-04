@@ -213,3 +213,20 @@ class SmsImportService {
     return true;
   }
 }
+
+/// Re-reads the name of every imported SMS from its saved text with the
+/// current parser, so a parser fix (e.g. Arabic shop names after في, or ATM
+/// withdrawals no longer named "your") also corrects transactions imported
+/// before it. Only the name changes; amounts, dates and filings stay.
+/// Returns how many names changed.
+Future<int> refreshSmsDescriptions(AppDatabase db) async {
+  var changed = 0;
+  for (final t in await db.allTransactions()) {
+    if (t.source != TxSource.sms || t.rawMessage.isEmpty) continue;
+    final parsed = parseBankSms(t.rawMessage);
+    if (parsed == null || parsed.description == t.description) continue;
+    await db.setTransactionDescription(t.id, parsed.description);
+    changed++;
+  }
+  return changed;
+}

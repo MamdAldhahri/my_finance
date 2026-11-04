@@ -96,6 +96,53 @@ void main() {
       expect(r.date, DateTime(2026, 8, 8));
     });
 
+    test('Arabic debit-card purchase names the shop after في', () {
+      final r = parseBankSms(
+        'تم خصم 5.000 OMR من حسابك رقم 0304XXXXXXXX0017 بإستخدام بطاقة الخصم '
+        'المباشر في 451840-ThawaniPay APP بتاريخ 2026/10/31 20:09:53. رصيدك '
+        'الحالي هو 128.255 OMR.',
+      );
+      expect(r, isNotNull);
+      expect(r!.isCredit, isFalse);
+      expect(r.amount, 5.000);
+      expect(r.description, 'ThawaniPay APP'); // terminal id dropped
+      expect(r.card, '0017');
+      expect(r.balanceAfter, 128.255);
+      expect(r.date, DateTime(2026, 10, 31));
+    });
+
+    test('Arabic purchases at different shops get different names', () {
+      final r = parseBankSms(
+        'تم خصم 3.900 OMR من حسابك رقم 0304XXXXXXXX0017 بإستخدام بطاقة الخصم '
+        'المباشر في 381369-Murtafat Sohar Al Mutka بتاريخ 2026/10/31 '
+        '19:41:19. رصيدك الحالي هو 133.255 OMR.',
+      );
+      expect(r!.description, 'Murtafat Sohar Al Mutka');
+      expect(r.amount, 3.900);
+    });
+
+    test('ATM withdrawal "from your a/c" is named ATM, not "your"', () {
+      final r = parseBankSms(
+        'OMR 200.000 withdrawn from your a/c 0616XXXXXXXX0001 through '
+        'ATM11353226 19:46:52 ATM on 31/10/2026 19:46:53. New Available '
+        'Balance is OMR 76.323.',
+      );
+      expect(r, isNotNull);
+      expect(r!.isCredit, isFalse);
+      expect(r.amount, 200.000);
+      expect(r.description, 'ATM');
+      expect(r.card, '0001');
+      expect(r.balanceAfter, 76.323);
+    });
+
+    test('transfer "from your a/c … to NAME" is named after the recipient', () {
+      final r = parseBankSms(
+        'OMR 50.000 transferred from your a/c 0616XXXXXXXX0001 to AHMED ALI '
+        'on 01/11/2026. Avl Bal OMR 26.323.',
+      );
+      expect(r!.description, 'AHMED ALI');
+    });
+
     test('Arabic "you sent" alert: merchant, account, balance', () {
       final r = parseBankSms(
         'عزيزي الزبون، لقد قمت بإرسال OMR 1.000 إلى SHU****LAH من حسابك '
