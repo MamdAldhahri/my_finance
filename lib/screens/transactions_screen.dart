@@ -4,13 +4,14 @@ import '../database/database.dart';
 import '../format.dart';
 import '../main.dart';
 import '../services/category_matching.dart';
-import '../services/category_tree.dart';
+import '../services/income_plan.dart';
 import '../services/pay_cycle.dart';
 import '../services/sms_import.dart';
 import '../theme.dart';
 import '../widgets/category_resolver_builder.dart';
 import '../widgets/sms_body_dialog.dart';
 import '../widgets/transaction_row.dart';
+import '../widgets/bucket_label.dart';
 import '../widgets/ui.dart';
 
 enum _Filter { all, income, expense }
@@ -268,9 +269,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   ) {
     final id = resolver.categoryIdFor(t);
     if (id == null) return null;
-    final tree = CategoryTree(categories);
-    final c = tree.byId[id];
-    return c == null ? null : tree.withPathName(c);
+    return categories.where((c) => c.id == id).firstOrNull;
   }
 }
 
@@ -625,7 +624,7 @@ class _ManualEntrySheetState extends State<_ManualEntrySheet> {
   bool _isCredit = false;
   DateTime _date = DateTime.now();
   int? _categoryId;
-  late final _tree = CategoryTree(widget.categories);
+  late final _ordered = categoriesByBucket(widget.categories);
 
   @override
   void dispose() {
@@ -717,10 +716,10 @@ class _ManualEntrySheetState extends State<_ManualEntrySheet> {
                     decoration: _inputDecoration(),
                     items: [
                       const DropdownMenuItem(value: null, child: Text('None')),
-                      for (final c in _tree.ordered)
+                      for (final c in _ordered)
                         DropdownMenuItem(
                           value: c.id,
-                          child: Text(_tree.pathName(c)),
+                          child: Text('${c.name} · ${c.bucket.label}'),
                         ),
                     ],
                     onChanged: (v) => setState(() => _categoryId = v),
@@ -826,8 +825,7 @@ class _AssignCategorySheet extends StatelessWidget {
     final title = txn.description.isEmpty ? 'this transaction' : txn.description;
     final byName = hasReusableName(txn);
     final effective = resolver.categoryIdFor(txn);
-    final tree = CategoryTree(categories);
-    final ordered = tree.ordered;
+    final ordered = categoriesByBucket(categories);
     return _Sheet(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -859,16 +857,16 @@ class _AssignCategorySheet extends StatelessWidget {
                     itemCount: ordered.length,
                     itemBuilder: (context, i) {
                       final c = ordered[i];
-                      final isSub = tree.isSub(c);
+                      final newBucket =
+                          i == 0 || ordered[i - 1].bucket != c.bucket;
                       final selected = effective == c.id;
-                      return InkWell(
+                      final row = InkWell(
                         onTap: () async {
                           await fileTransactionToCategory(db, txn, c);
                           if (context.mounted) Navigator.pop(context);
                         },
                         child: Container(
-                          padding: EdgeInsets.fromLTRB(
-                              isSub ? 42 : 20, 14, 20, 14),
+                          padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
                           decoration: const BoxDecoration(
                             border: Border(
                                 bottom:
@@ -894,6 +892,16 @@ class _AssignCategorySheet extends StatelessWidget {
                             ],
                           ),
                         ),
+                      );
+                      if (!newBucket) return row;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          BucketLabel(c.bucket,
+                              padding:
+                                  const EdgeInsets.fromLTRB(20, 14, 20, 4)),
+                          row,
+                        ],
                       );
                     },
                   ),

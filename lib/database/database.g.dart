@@ -779,17 +779,16 @@ class $CategoriesTable extends Categories
     requiredDuringInsert: false,
     defaultValue: const Constant('{}'),
   );
-  static const VerificationMeta _parentIdMeta = const VerificationMeta(
-    'parentId',
-  );
   @override
-  late final GeneratedColumn<int> parentId = GeneratedColumn<int>(
-    'parent_id',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-  );
+  late final GeneratedColumnWithTypeConverter<Bucket, int> bucket =
+      GeneratedColumn<int>(
+        'bucket',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: false,
+        defaultValue: const Constant(0),
+      ).withConverter<Bucket>($CategoriesTable.$converterbucket);
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -797,7 +796,7 @@ class $CategoriesTable extends Categories
     color,
     senderIds,
     shopNames,
-    parentId,
+    bucket,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -840,12 +839,6 @@ class $CategoriesTable extends Categories
         shopNames.isAcceptableOrUnknown(data['shop_names']!, _shopNamesMeta),
       );
     }
-    if (data.containsKey('parent_id')) {
-      context.handle(
-        _parentIdMeta,
-        parentId.isAcceptableOrUnknown(data['parent_id']!, _parentIdMeta),
-      );
-    }
     return context;
   }
 
@@ -875,9 +868,11 @@ class $CategoriesTable extends Categories
         DriftSqlType.string,
         data['${effectivePrefix}shop_names'],
       )!,
-      parentId: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}parent_id'],
+      bucket: $CategoriesTable.$converterbucket.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}bucket'],
+        )!,
       ),
     );
   }
@@ -886,6 +881,9 @@ class $CategoriesTable extends Categories
   $CategoriesTable createAlias(String alias) {
     return $CategoriesTable(attachedDatabase, alias);
   }
+
+  static JsonTypeConverter2<Bucket, int, int> $converterbucket =
+      const EnumIndexConverter<Bucket>(Bucket.values);
 }
 
 class Category extends DataClass implements Insertable<Category> {
@@ -895,15 +893,15 @@ class Category extends DataClass implements Insertable<Category> {
   final String senderIds;
   final String shopNames;
 
-  /// The top-level category this one sits under (null = top level).
-  final int? parentId;
+  /// The income-plan bucket this category's spending counts toward.
+  final Bucket bucket;
   const Category({
     required this.id,
     required this.name,
     required this.color,
     required this.senderIds,
     required this.shopNames,
-    this.parentId,
+    required this.bucket,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -913,8 +911,10 @@ class Category extends DataClass implements Insertable<Category> {
     map['color'] = Variable<String>(color);
     map['sender_ids'] = Variable<String>(senderIds);
     map['shop_names'] = Variable<String>(shopNames);
-    if (!nullToAbsent || parentId != null) {
-      map['parent_id'] = Variable<int>(parentId);
+    {
+      map['bucket'] = Variable<int>(
+        $CategoriesTable.$converterbucket.toSql(bucket),
+      );
     }
     return map;
   }
@@ -926,9 +926,7 @@ class Category extends DataClass implements Insertable<Category> {
       color: Value(color),
       senderIds: Value(senderIds),
       shopNames: Value(shopNames),
-      parentId: parentId == null && nullToAbsent
-          ? const Value.absent()
-          : Value(parentId),
+      bucket: Value(bucket),
     );
   }
 
@@ -943,7 +941,9 @@ class Category extends DataClass implements Insertable<Category> {
       color: serializer.fromJson<String>(json['color']),
       senderIds: serializer.fromJson<String>(json['senderIds']),
       shopNames: serializer.fromJson<String>(json['shopNames']),
-      parentId: serializer.fromJson<int?>(json['parentId']),
+      bucket: $CategoriesTable.$converterbucket.fromJson(
+        serializer.fromJson<int>(json['bucket']),
+      ),
     );
   }
   @override
@@ -955,7 +955,9 @@ class Category extends DataClass implements Insertable<Category> {
       'color': serializer.toJson<String>(color),
       'senderIds': serializer.toJson<String>(senderIds),
       'shopNames': serializer.toJson<String>(shopNames),
-      'parentId': serializer.toJson<int?>(parentId),
+      'bucket': serializer.toJson<int>(
+        $CategoriesTable.$converterbucket.toJson(bucket),
+      ),
     };
   }
 
@@ -965,14 +967,14 @@ class Category extends DataClass implements Insertable<Category> {
     String? color,
     String? senderIds,
     String? shopNames,
-    Value<int?> parentId = const Value.absent(),
+    Bucket? bucket,
   }) => Category(
     id: id ?? this.id,
     name: name ?? this.name,
     color: color ?? this.color,
     senderIds: senderIds ?? this.senderIds,
     shopNames: shopNames ?? this.shopNames,
-    parentId: parentId.present ? parentId.value : this.parentId,
+    bucket: bucket ?? this.bucket,
   );
   Category copyWithCompanion(CategoriesCompanion data) {
     return Category(
@@ -981,7 +983,7 @@ class Category extends DataClass implements Insertable<Category> {
       color: data.color.present ? data.color.value : this.color,
       senderIds: data.senderIds.present ? data.senderIds.value : this.senderIds,
       shopNames: data.shopNames.present ? data.shopNames.value : this.shopNames,
-      parentId: data.parentId.present ? data.parentId.value : this.parentId,
+      bucket: data.bucket.present ? data.bucket.value : this.bucket,
     );
   }
 
@@ -993,14 +995,14 @@ class Category extends DataClass implements Insertable<Category> {
           ..write('color: $color, ')
           ..write('senderIds: $senderIds, ')
           ..write('shopNames: $shopNames, ')
-          ..write('parentId: $parentId')
+          ..write('bucket: $bucket')
           ..write(')'))
         .toString();
   }
 
   @override
   int get hashCode =>
-      Object.hash(id, name, color, senderIds, shopNames, parentId);
+      Object.hash(id, name, color, senderIds, shopNames, bucket);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1010,7 +1012,7 @@ class Category extends DataClass implements Insertable<Category> {
           other.color == this.color &&
           other.senderIds == this.senderIds &&
           other.shopNames == this.shopNames &&
-          other.parentId == this.parentId);
+          other.bucket == this.bucket);
 }
 
 class CategoriesCompanion extends UpdateCompanion<Category> {
@@ -1019,14 +1021,14 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
   final Value<String> color;
   final Value<String> senderIds;
   final Value<String> shopNames;
-  final Value<int?> parentId;
+  final Value<Bucket> bucket;
   const CategoriesCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.color = const Value.absent(),
     this.senderIds = const Value.absent(),
     this.shopNames = const Value.absent(),
-    this.parentId = const Value.absent(),
+    this.bucket = const Value.absent(),
   });
   CategoriesCompanion.insert({
     this.id = const Value.absent(),
@@ -1034,7 +1036,7 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
     this.color = const Value.absent(),
     this.senderIds = const Value.absent(),
     this.shopNames = const Value.absent(),
-    this.parentId = const Value.absent(),
+    this.bucket = const Value.absent(),
   }) : name = Value(name);
   static Insertable<Category> custom({
     Expression<int>? id,
@@ -1042,7 +1044,7 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
     Expression<String>? color,
     Expression<String>? senderIds,
     Expression<String>? shopNames,
-    Expression<int>? parentId,
+    Expression<int>? bucket,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1050,7 +1052,7 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
       if (color != null) 'color': color,
       if (senderIds != null) 'sender_ids': senderIds,
       if (shopNames != null) 'shop_names': shopNames,
-      if (parentId != null) 'parent_id': parentId,
+      if (bucket != null) 'bucket': bucket,
     });
   }
 
@@ -1060,7 +1062,7 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
     Value<String>? color,
     Value<String>? senderIds,
     Value<String>? shopNames,
-    Value<int?>? parentId,
+    Value<Bucket>? bucket,
   }) {
     return CategoriesCompanion(
       id: id ?? this.id,
@@ -1068,7 +1070,7 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
       color: color ?? this.color,
       senderIds: senderIds ?? this.senderIds,
       shopNames: shopNames ?? this.shopNames,
-      parentId: parentId ?? this.parentId,
+      bucket: bucket ?? this.bucket,
     );
   }
 
@@ -1090,8 +1092,10 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
     if (shopNames.present) {
       map['shop_names'] = Variable<String>(shopNames.value);
     }
-    if (parentId.present) {
-      map['parent_id'] = Variable<int>(parentId.value);
+    if (bucket.present) {
+      map['bucket'] = Variable<int>(
+        $CategoriesTable.$converterbucket.toSql(bucket.value),
+      );
     }
     return map;
   }
@@ -1104,7 +1108,7 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
           ..write('color: $color, ')
           ..write('senderIds: $senderIds, ')
           ..write('shopNames: $shopNames, ')
-          ..write('parentId: $parentId')
+          ..write('bucket: $bucket')
           ..write(')'))
         .toString();
   }
@@ -4030,7 +4034,7 @@ typedef $$CategoriesTableCreateCompanionBuilder =
       Value<String> color,
       Value<String> senderIds,
       Value<String> shopNames,
-      Value<int?> parentId,
+      Value<Bucket> bucket,
     });
 typedef $$CategoriesTableUpdateCompanionBuilder =
     CategoriesCompanion Function({
@@ -4039,7 +4043,7 @@ typedef $$CategoriesTableUpdateCompanionBuilder =
       Value<String> color,
       Value<String> senderIds,
       Value<String> shopNames,
-      Value<int?> parentId,
+      Value<Bucket> bucket,
     });
 
 class $$CategoriesTableFilterComposer
@@ -4076,10 +4080,11 @@ class $$CategoriesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<int> get parentId => $composableBuilder(
-    column: $table.parentId,
-    builder: (column) => ColumnFilters(column),
-  );
+  ColumnWithTypeConverterFilters<Bucket, Bucket, int> get bucket =>
+      $composableBuilder(
+        column: $table.bucket,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
 }
 
 class $$CategoriesTableOrderingComposer
@@ -4116,8 +4121,8 @@ class $$CategoriesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<int> get parentId => $composableBuilder(
-    column: $table.parentId,
+  ColumnOrderings<int> get bucket => $composableBuilder(
+    column: $table.bucket,
     builder: (column) => ColumnOrderings(column),
   );
 }
@@ -4146,8 +4151,8 @@ class $$CategoriesTableAnnotationComposer
   GeneratedColumn<String> get shopNames =>
       $composableBuilder(column: $table.shopNames, builder: (column) => column);
 
-  GeneratedColumn<int> get parentId =>
-      $composableBuilder(column: $table.parentId, builder: (column) => column);
+  GeneratedColumnWithTypeConverter<Bucket, int> get bucket =>
+      $composableBuilder(column: $table.bucket, builder: (column) => column);
 }
 
 class $$CategoriesTableTableManager
@@ -4183,14 +4188,14 @@ class $$CategoriesTableTableManager
                 Value<String> color = const Value.absent(),
                 Value<String> senderIds = const Value.absent(),
                 Value<String> shopNames = const Value.absent(),
-                Value<int?> parentId = const Value.absent(),
+                Value<Bucket> bucket = const Value.absent(),
               }) => CategoriesCompanion(
                 id: id,
                 name: name,
                 color: color,
                 senderIds: senderIds,
                 shopNames: shopNames,
-                parentId: parentId,
+                bucket: bucket,
               ),
           createCompanionCallback:
               ({
@@ -4199,14 +4204,14 @@ class $$CategoriesTableTableManager
                 Value<String> color = const Value.absent(),
                 Value<String> senderIds = const Value.absent(),
                 Value<String> shopNames = const Value.absent(),
-                Value<int?> parentId = const Value.absent(),
+                Value<Bucket> bucket = const Value.absent(),
               }) => CategoriesCompanion.insert(
                 id: id,
                 name: name,
                 color: color,
                 senderIds: senderIds,
                 shopNames: shopNames,
-                parentId: parentId,
+                bucket: bucket,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

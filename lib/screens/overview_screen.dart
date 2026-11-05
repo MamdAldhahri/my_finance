@@ -4,14 +4,21 @@ import '../database/database.dart';
 import '../format.dart';
 import '../main.dart';
 import '../services/category_matching.dart';
-import '../services/category_tree.dart';
 import '../services/debt_matching.dart';
 import '../services/derive.dart';
+import '../services/income_plan.dart';
+import '../services/pay_cycle.dart';
 import '../theme.dart';
 import '../widgets/category_resolver_builder.dart';
+import '../widgets/plan_card.dart';
 import '../widgets/sms_body_dialog.dart';
 import '../widgets/transaction_row.dart';
 import '../widgets/ui.dart';
+import 'plan_detail_screen.dart';
+import 'plan_setup_screen.dart';
+
+/// Created once so rebuilds don't resubscribe (and flash the set-up prompt).
+final Stream<IncomePlan?> _planStream = watchIncomePlan(db);
 
 /// Home tab: total balance (from SMS), per-account breakdown, debt & goals
 /// summaries, and recent activity.
@@ -37,13 +44,19 @@ class OverviewScreen extends StatelessWidget {
                       return StreamBuilder<List<Goal>>(
                         stream: db.watchGoals(),
                         builder: (context, goalSnap) {
-                          return _Body(
-                            txns: txns,
-                            categories: categories,
-                            resolver: resolver,
-                            debts: debtSnap.data ?? const [],
-                            debtPayments: paySnap.data ?? const [],
-                            goals: goalSnap.data ?? const [],
+                          return StreamBuilder<IncomePlan?>(
+                            stream: _planStream,
+                            builder: (context, planSnap) {
+                              return _Body(
+                                txns: txns,
+                                categories: categories,
+                                resolver: resolver,
+                                debts: debtSnap.data ?? const [],
+                                debtPayments: paySnap.data ?? const [],
+                                goals: goalSnap.data ?? const [],
+                                plan: planSnap.data,
+                              );
+                            },
                           );
                         },
                       );
@@ -67,6 +80,7 @@ class _Body extends StatelessWidget {
     required this.debts,
     required this.debtPayments,
     required this.goals,
+    required this.plan,
   });
 
   final List<Transaction> txns;
@@ -75,6 +89,7 @@ class _Body extends StatelessWidget {
   final List<Debt> debts;
   final List<DebtPayment> debtPayments;
   final List<Goal> goals;
+  final IncomePlan? plan;
 
   @override
   Widget build(BuildContext context) {
@@ -96,12 +111,31 @@ class _Body extends StatelessWidget {
 
     final recent = txns.take(4).toList();
 
+    final inputs = PlanInputs(
+      txns: txns,
+      resolver: resolver,
+      categories: categories,
+      debts: debts,
+      debtPayments: debtPayments,
+    );
+    final plan = this.plan;
+    final cycle = PayCycles.fromTransactions(txns).current;
+    final report = plan == null ? null : inputs.report(cycle, plan);
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
       children: [
         _Header(),
         const SizedBox(height: 18),
         _BalanceCard(accounts: accounts, total: total, deltaPct: delta),
+        const SizedBox(height: 16),
+        PlanCard(
+          report: report,
+          onSetUp: () => openPlanSetup(context, plan),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => PlanDetailScreen(inputs: inputs),
+          )),
+        ),
         const SizedBox(height: 16),
         Row(
           children: [
@@ -174,9 +208,7 @@ class _Body extends StatelessWidget {
   Category? _categoryOf(Transaction t) {
     final id = resolver.categoryIdFor(t);
     if (id == null) return null;
-    final tree = CategoryTree(categories);
-    final c = tree.byId[id];
-    return c == null ? null : tree.withPathName(c);
+    return categories.where((c) => c.id == id).firstOrNull;
   }
 }
 
