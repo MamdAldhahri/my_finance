@@ -2,16 +2,17 @@ import 'package:flutter/material.dart';
 
 import '../database/database.dart';
 import '../format.dart';
+import '../l10n/language.dart';
 import '../main.dart';
 import '../services/category_matching.dart';
 import '../services/income_plan.dart';
 import '../services/pay_cycle.dart';
 import '../services/sms_import.dart';
 import '../theme.dart';
+import '../widgets/bucket_label.dart';
 import '../widgets/category_resolver_builder.dart';
 import '../widgets/sms_body_dialog.dart';
 import '../widgets/transaction_row.dart';
-import '../widgets/bucket_label.dart';
 import '../widgets/ui.dart';
 
 enum _Filter { all, income, expense }
@@ -36,8 +37,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   Future<void> _openSenderPicker() async {
     final granted = await smsImport.requestPermission();
     if (!granted) {
-      _snack('SMS permission denied. Enable it in system settings to '
-          'auto-import bank transactions.');
+      _snack(tr.smsPermissionDenied);
       return;
     }
     if (!mounted) return;
@@ -59,8 +59,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       if (mounted) {
         setState(() => _scanning = false);
         _snack(added == 0
-            ? 'No new bank messages found.'
-            : 'Imported $added transaction${added == 1 ? '' : 's'}.');
+            ? tr.noNewBankMessages
+            : tr.importedTransactions(added));
       }
     }
   }
@@ -126,8 +126,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Text(
-          'Transactions',
+        Text(
+          tr.navTransactions,
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w700,
@@ -181,7 +181,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           children: [
             Expanded(
               child: _MonthStat(
-                label: 'Income · ${cycle.label()}',
+                label: tr.incomeWithCycle(cycle.label()),
                 value: income,
                 color: AppColors.green,
               ),
@@ -189,7 +189,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: _MonthStat(
-                label: 'Expenses · ${cycle.label()}',
+                label: tr.expensesWithCycle(cycle.label()),
                 value: expense,
                 color: AppColors.terracotta,
               ),
@@ -200,19 +200,19 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         Row(
           children: [
             _FilterChip(
-              label: 'All',
+              label: tr.filterAll,
               selected: _filter == _Filter.all,
               onTap: () => setState(() => _filter = _Filter.all),
             ),
             const SizedBox(width: 8),
             _FilterChip(
-              label: 'Income',
+              label: tr.income,
               selected: _filter == _Filter.income,
               onTap: () => setState(() => _filter = _Filter.income),
             ),
             const SizedBox(width: 8),
             _FilterChip(
-              label: 'Expenses',
+              label: tr.expenses,
               selected: _filter == _Filter.expense,
               onTap: () => setState(() => _filter = _Filter.expense),
             ),
@@ -225,9 +225,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               padding: const EdgeInsets.symmetric(vertical: 26),
               child: Text(
                 all.isEmpty
-                    ? 'No transactions yet.\nTap the gear to pick your bank '
-                        'chat, or + to add one manually.'
-                    : 'Nothing in this filter.',
+                    ? tr.noTransactionsTapGear
+                    : tr.nothingInFilter,
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 13, color: AppColors.faint),
               ),
@@ -460,11 +459,10 @@ class _SenderPickerSheetState extends State<_SenderPickerSheet> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const _SheetHeader(
-            title: 'Which chat is your bank?',
+          _SheetHeader(
+            title: tr.whichChatIsBank,
             subtitle:
-                'Pick every sender that texts you card alerts. Only these are '
-                'read.',
+                tr.pickBankSenders,
           ),
           const Divider(height: 1, color: AppColors.cardBorder),
           Flexible(
@@ -479,11 +477,10 @@ class _SenderPickerSheetState extends State<_SenderPickerSheet> {
                 }
                 final senders = snap.data ?? const [];
                 if (senders.isEmpty) {
-                  return const Padding(
+                  return Padding(
                     padding: EdgeInsets.all(28),
                     child: Text(
-                      'No SMS found. This works on Android with SMS permission '
-                      'granted.',
+                      tr.noSmsFoundAndroid,
                       textAlign: TextAlign.center,
                       style: TextStyle(color: AppColors.faint),
                     ),
@@ -510,7 +507,7 @@ class _SenderPickerSheetState extends State<_SenderPickerSheet> {
             ),
           ),
           _SheetButton(
-            label: 'Save',
+            label: tr.save,
             onTap: () => Navigator.pop(context, _chosen.toList()),
           ),
         ],
@@ -669,8 +666,8 @@ class _ManualEntrySheetState extends State<_ManualEntrySheet> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  'Add a transaction',
+                Text(
+                  tr.addTransaction,
                   style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w700,
@@ -678,35 +675,35 @@ class _ManualEntrySheetState extends State<_ManualEntrySheet> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
-                  'A one-off entry that is not from a bank SMS.',
+                Text(
+                  tr.oneOffEntryHint,
                   style: TextStyle(fontSize: 12.5, color: AppColors.muted),
                 ),
                 const SizedBox(height: 16),
-                _field(_name, 'What was it?', capitalize: true),
+                _field(_name, tr.whatWasIt, capitalize: true),
                 const SizedBox(height: 12),
                 _field(
                   _amount,
-                  'Amount (OMR)',
+                  tr.amountOmr(currency),
                   number: true,
                   validator: (v) {
                     final n = double.tryParse(v ?? '');
-                    return (n == null || n <= 0) ? 'Enter an amount' : null;
+                    return (n == null || n <= 0) ? tr.enterAmount : null;
                   },
                 ),
                 const SizedBox(height: 14),
                 Row(
                   children: [
-                    _typeChip('Expense', !_isCredit,
+                    _typeChip(tr.expense, !_isCredit,
                         () => setState(() => _isCredit = false)),
                     const SizedBox(width: 8),
-                    _typeChip('Income', _isCredit,
+                    _typeChip(tr.income, _isCredit,
                         () => setState(() => _isCredit = true)),
                   ],
                 ),
                 const SizedBox(height: 14),
                 if (widget.categories.isNotEmpty) ...[
-                  const Text('Category',
+                  Text(tr.category,
                       style:
                           TextStyle(fontSize: 12.5, color: AppColors.muted)),
                   const SizedBox(height: 6),
@@ -715,11 +712,11 @@ class _ManualEntrySheetState extends State<_ManualEntrySheet> {
                     isExpanded: true,
                     decoration: _inputDecoration(),
                     items: [
-                      const DropdownMenuItem(value: null, child: Text('None')),
+                      DropdownMenuItem(value: null, child: Text(tr.none)),
                       for (final c in _ordered)
                         DropdownMenuItem(
                           value: c.id,
-                          child: Text('${c.name} · ${c.bucket.label}'),
+                          child: Text(tr.categoryWithBucket(c.name, c.bucket.label)),
                         ),
                     ],
                     onChanged: (v) => setState(() => _categoryId = v),
@@ -729,7 +726,7 @@ class _ManualEntrySheetState extends State<_ManualEntrySheet> {
                 OutlinedButton.icon(
                   onPressed: _pickDate,
                   icon: const Icon(Icons.calendar_today, size: 16),
-                  label: Text('Date: ${shortDate(_date)}'),
+                  label: Text(tr.dateLabel(shortDate(_date))),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.ink,
                     side: const BorderSide(color: Color(0x261E2E2A)),
@@ -738,7 +735,7 @@ class _ManualEntrySheetState extends State<_ManualEntrySheet> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                _SheetButton(label: 'Save', onTap: _save, inset: false),
+                _SheetButton(label: tr.save, onTap: _save, inset: false),
               ],
             ),
           ),
@@ -762,7 +759,7 @@ class _ManualEntrySheetState extends State<_ManualEntrySheet> {
           capitalize ? TextCapitalization.sentences : TextCapitalization.none,
       decoration: _inputDecoration(label: label),
       validator: validator ??
-          (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+          (v) => (v == null || v.trim().isEmpty) ? tr.required : null,
     );
   }
 
@@ -822,7 +819,7 @@ class _AssignCategorySheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = txn.description.isEmpty ? 'this transaction' : txn.description;
+    final title = txn.description.isEmpty ? tr.thisTransaction : txn.description;
     final byName = hasReusableName(txn);
     final effective = resolver.categoryIdFor(txn);
     final ordered = categoriesByBucket(categories);
@@ -831,23 +828,20 @@ class _AssignCategorySheet extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _SheetHeader(
-            title: 'Add to category',
+            title: tr.addToCategory,
             subtitle: resolver.isDebtPayment(txn) && effective == null
-                ? 'This is counted as a debt payment, so it is not in a '
-                    'category. You can still file it here.'
+                ? tr.debtPaymentNotInCategory
                 : byName
-                    ? 'Files every "$title" transaction into this category. '
-                        'Remove only this one with the button below.'
-                    : 'File "$title" under a category.',
+                    ? tr.filesEveryNamed(title)
+                    : tr.fileUnderCategory(title),
           ),
           const Divider(height: 1, color: AppColors.cardBorder),
           Flexible(
             child: categories.isEmpty
-                ? const Padding(
+                ? Padding(
                     padding: EdgeInsets.all(24),
                     child: Text(
-                      'No categories yet — create one in the Categories tab '
-                      'first.',
+                      tr.noCategoriesYetCreate,
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 13, color: AppColors.faint),
                     ),
@@ -913,7 +907,7 @@ class _AssignCategorySheet extends StatelessWidget {
                 if (effective != null)
                   Expanded(
                     child: _OutlineButton(
-                      label: 'Remove this one',
+                      label: tr.removeThisOne,
                       onTap: () async {
                         await removeTransactionFromCategory(db, txn);
                         if (context.mounted) Navigator.pop(context);
@@ -925,7 +919,7 @@ class _AssignCategorySheet extends StatelessWidget {
                 if (txn.source == TxSource.manual)
                   Expanded(
                     child: _OutlineButton(
-                      label: 'Delete',
+                      label: tr.delete,
                       danger: true,
                       onTap: () async {
                         await db.deleteTransaction(txn.id);

@@ -1,5 +1,4 @@
-import 'package:intl/intl.dart';
-
+import '../l10n/language.dart';
 import 'pay_cycle.dart';
 
 /// How long a stretch of time the Categories screen summarises.
@@ -7,9 +6,9 @@ enum PeriodKind { daily, monthly, yearly }
 
 extension PeriodKindLabel on PeriodKind {
   String get label => switch (this) {
-        PeriodKind.daily => 'Daily',
-        PeriodKind.monthly => 'Monthly',
-        PeriodKind.yearly => 'Yearly',
+        PeriodKind.daily => tr.periodDaily,
+        PeriodKind.monthly => tr.periodMonthly,
+        PeriodKind.yearly => tr.periodYearly,
       };
 
   /// How far back the arrows may step.
@@ -60,11 +59,11 @@ ViewPeriod viewPeriod(
       final end = DateTime(day.year, day.month, day.day + 1);
       final String label;
       if (day == today) {
-        label = 'Today';
+        label = tr.today;
       } else if (day == DateTime(today.year, today.month, today.day - 1)) {
-        label = 'Yesterday';
+        label = tr.yesterday;
       } else {
-        label = DateFormat(day.year == now.year ? 'EEE d MMM' : 'EEE d MMM y')
+        label = appDateFormat(day.year == now.year ? 'EEE d MMM' : 'EEE d MMM y')
             .format(day);
       }
       return ViewPeriod(day, end, label);
@@ -80,10 +79,10 @@ ViewPeriod viewPeriod(
       final year = cycles.cycleFor(latest).anchorMonth.year - offset;
       final first = cycles.cycleFor(DateTime(year, 1, 28));
       final last = cycles.cycleFor(DateTime(year, 12, 28));
-      final f = DateFormat('d MMM');
+      final f = appDateFormat('d MMM');
       final String range;
       if (last.end.isAfter(now)) {
-        range = 'since ${f.format(first.start)}';
+        range = tr.sinceDate(f.format(first.start));
       } else {
         final lastDay =
             DateTime(last.end.year, last.end.month, last.end.day - 1);

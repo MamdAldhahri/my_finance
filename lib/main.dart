@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'database/database.dart';
+import 'l10n/language.dart';
 import 'screens/categories_screen.dart';
 import 'screens/debts_screen.dart';
 import 'screens/goals_screen.dart';
@@ -29,6 +31,9 @@ void main() async {
   db = AppDatabase();
   smsImport = SmsImportService(db);
 
+  // Open in the language the user picked last time.
+  await loadAppLanguage(db);
+
   // Bring names of already-imported SMS up to date with the current parser.
   await refreshSmsDescriptions(db);
 
@@ -42,15 +47,53 @@ void main() async {
   runApp(const FinanceApp());
 }
 
-class FinanceApp extends StatelessWidget {
+class FinanceApp extends StatefulWidget {
   const FinanceApp({super.key});
 
   @override
+  State<FinanceApp> createState() => _FinanceAppState();
+}
+
+class _FinanceAppState extends State<FinanceApp> {
+  @override
+  void initState() {
+    super.initState();
+    appLanguage.addListener(_onLanguageChanged);
+  }
+
+  @override
+  void dispose() {
+    appLanguage.removeListener(_onLanguageChanged);
+    super.dispose();
+  }
+
+  /// Strings are read through [tr], so a language switch rebuilds every
+  /// widget (keeping their state, like the selected tab) to pick them up.
+  void _onLanguageChanged() {
+    setState(() {});
+    void rebuild(Element el) {
+      el.markNeedsBuild();
+      el.visitChildren(rebuild);
+    }
+
+    (context as Element).visitChildren(rebuild);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final lang = appLanguage.value;
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'My Finance',
+      onGenerateTitle: (_) => tr.appTitle,
       theme: buildAppTheme(),
+      locale: lang.locale,
+      supportedLocales: AppLocalizations.supportedLocales,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       home: const RootScreen(),
     );
   }
@@ -94,16 +137,15 @@ class _BottomNav extends StatelessWidget {
   final int index;
   final ValueChanged<int> onSelect;
 
-  static const _items = [
-    (Icons.home_outlined, Icons.home, 'Overview'),
-    (Icons.grid_view_outlined, Icons.grid_view, 'Categories'),
-    (Icons.credit_card_outlined, Icons.credit_card, 'Debt'),
-    (Icons.adjust_outlined, Icons.adjust, 'Goals'),
-    (Icons.swap_horiz, Icons.swap_horiz, 'Transactions'),
-  ];
-
   @override
   Widget build(BuildContext context) {
+    final items = [
+      (Icons.home_outlined, Icons.home, tr.navOverview),
+      (Icons.grid_view_outlined, Icons.grid_view, tr.navCategories),
+      (Icons.credit_card_outlined, Icons.credit_card, tr.navDebt),
+      (Icons.adjust_outlined, Icons.adjust, tr.navGoals),
+      (Icons.swap_horiz, Icons.swap_horiz, tr.navTransactions),
+    ];
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.screen,
@@ -116,10 +158,10 @@ class _BottomNav extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              for (var i = 0; i < _items.length; i++)
+              for (var i = 0; i < items.length; i++)
                 _NavItem(
-                  icon: index == i ? _items[i].$2 : _items[i].$1,
-                  label: _items[i].$3,
+                  icon: index == i ? items[i].$2 : items[i].$1,
+                  label: items[i].$3,
                   active: index == i,
                   onTap: () => onSelect(i),
                 ),

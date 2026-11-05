@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../database/database.dart';
 import '../format.dart';
+import '../l10n/language.dart';
 import '../main.dart';
 import '../services/category_matching.dart';
 import '../services/income_plan.dart';
@@ -85,9 +86,9 @@ class PlanDetailScreen extends StatelessWidget {
                         color: AppColors.ink,
                       ),
                     ),
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'Income plan',
+                        tr.incomePlan,
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
@@ -100,16 +101,16 @@ class PlanDetailScreen extends StatelessWidget {
                       style: TextButton.styleFrom(
                         foregroundColor: AppColors.green,
                       ),
-                      child: const Text('Edit plan'),
+                      child: Text(tr.editPlan),
                     ),
                   ],
                 ),
                 const SizedBox(height: 8),
                 if (plan == null)
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.symmetric(vertical: 30),
                     child: Text(
-                      'No plan yet.',
+                      tr.noPlanYet,
                       textAlign: TextAlign.center,
                       style: TextStyle(color: AppColors.faint),
                     ),
@@ -124,8 +125,8 @@ class PlanDetailScreen extends StatelessWidget {
                   ),
                   if (past.isNotEmpty) ...[
                     const SizedBox(height: 24),
-                    const Text(
-                      'Previous cycles',
+                    Text(
+                      tr.previousCycles,
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
@@ -133,8 +134,8 @@ class PlanDetailScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    const Text(
-                      'Measured against your current split.',
+                    Text(
+                      tr.measuredAgainstSplit,
                       style: TextStyle(fontSize: 12, color: AppColors.faint),
                     ),
                     const SizedBox(height: 10),
@@ -235,8 +236,8 @@ class _PastCycle extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           if (r.income <= 0)
-            const Text(
-              'No salary found for this cycle.',
+            Text(
+              tr.noSalaryThisCycle,
               style: TextStyle(fontSize: 12, color: AppColors.faint),
             )
           else ...[
@@ -246,7 +247,7 @@ class _PastCycle extends StatelessWidget {
             ],
             if (r.unknown > 0.0005)
               Text(
-                '${money(r.unknown)} in Unknown (no category)',
+                tr.amountInUnknown(money(r.unknown)),
                 style: const TextStyle(fontSize: 11.5, color: AppColors.faint),
               ),
           ],

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../database/database.dart';
 import '../format.dart';
+import '../l10n/language.dart';
 import '../main.dart';
 import '../services/category_matching.dart';
 import '../services/debt_matching.dart';
@@ -141,7 +142,7 @@ class _Body extends StatelessWidget {
           children: [
             Expanded(
               child: _MiniStat(
-                label: 'Debt left',
+                label: tr.debtLeft,
                 value: debtLeft,
                 fraction: debtPaidFrac,
                 color: AppColors.terracotta,
@@ -151,7 +152,7 @@ class _Body extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: _MiniStat(
-                label: 'Goals saved',
+                label: tr.goalsSaved,
                 value: goalsSaved,
                 fraction: goalsFrac,
                 color: AppColors.green,
@@ -161,8 +162,8 @@ class _Body extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 24),
-        const Text(
-          'Recent activity',
+        Text(
+          tr.recentActivity,
           style: TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.w700,
@@ -175,8 +176,7 @@ class _Body extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 20),
               child: Text(
-                'No transactions yet.\nEnable bank-SMS import from the '
-                'Transactions tab.',
+                tr.noTransactionsYet,
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 13, color: AppColors.faint),
               ),
@@ -217,10 +217,10 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     final hour = DateTime.now().hour;
     final greeting = hour < 12
-        ? 'Good morning'
+        ? tr.goodMorning
         : hour < 18
-            ? 'Good afternoon'
-            : 'Good evening';
+            ? tr.goodAfternoon
+            : tr.goodEvening;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -235,8 +235,8 @@ class _Header extends StatelessWidget {
                 color: AppColors.muted,
               ),
             ),
-            const Text(
-              'My Finance',
+            Text(
+              tr.appTitle,
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w700,
@@ -246,25 +246,80 @@ class _Header extends StatelessWidget {
             ),
           ],
         ),
-        Container(
-          width: 40,
-          height: 40,
-          alignment: Alignment.center,
-          decoration: const BoxDecoration(
-            color: AppColors.green,
-            shape: BoxShape.circle,
-          ),
-          child: const Text(
-            'M',
-            style: TextStyle(
-              fontFamily: 'Newsreader',
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const _LanguageToggle(),
+            const SizedBox(width: 10),
+            _Avatar(),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// App-bar pill that flips between English and Arabic. Shows the language it
+/// switches to ("ع" while in English, "EN" while in Arabic); the choice is
+/// saved so the app opens in it next time.
+class _LanguageToggle extends StatelessWidget {
+  const _LanguageToggle();
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tr.switchLanguage,
+      child: Material(
+        color: AppColors.green.withValues(alpha: 0.10),
+        shape: const StadiumBorder(),
+        child: InkWell(
+          key: const ValueKey('language-toggle'),
+          customBorder: const StadiumBorder(),
+          onTap: () => setAppLanguage(db, appLanguage.value.other),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.translate, size: 16, color: AppColors.green),
+                const SizedBox(width: 6),
+                Text(
+                  tr.languageToggleLabel,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.green,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
-      ],
+      ),
+    );
+  }
+}
+
+class _Avatar extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 40,
+      height: 40,
+      alignment: Alignment.center,
+      decoration: const BoxDecoration(
+        color: AppColors.green,
+        shape: BoxShape.circle,
+      ),
+      child: const Text(
+        'M',
+        style: TextStyle(
+          fontFamily: 'Newsreader',
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+          color: Colors.white,
+        ),
+      ),
     );
   }
 }
@@ -287,7 +342,7 @@ class _BalanceCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const MutedCaps('Total balance', color: Colors.white60),
+          MutedCaps(tr.totalBalance, color: Colors.white60),
           const SizedBox(height: 6),
           SerifAmount(money(total),
               size: 38, color: Colors.white, weight: FontWeight.w500),
@@ -312,8 +367,8 @@ class _BalanceCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 6),
-                const Text(
-                  'vs before payday',
+                Text(
+                  tr.vsBeforePayday,
                   style: TextStyle(fontSize: 12, color: Colors.white54),
                 ),
               ],
@@ -321,7 +376,7 @@ class _BalanceCard extends StatelessWidget {
           ],
           if (accounts.isNotEmpty) ...[
             const SizedBox(height: 20),
-            const MutedCaps('Your accounts', color: Colors.white54, size: 11),
+            MutedCaps(tr.yourAccounts, color: Colors.white54, size: 11),
             const SizedBox(height: 8),
             for (final a in accounts) ...[
               _AccountRow(account: a),

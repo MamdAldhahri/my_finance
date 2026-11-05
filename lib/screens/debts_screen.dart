@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../database/database.dart';
 import '../format.dart';
+import '../l10n/language.dart';
 import '../main.dart';
 import '../services/debt_matching.dart';
 import '../services/pay_cycle.dart';
@@ -43,7 +44,7 @@ class DebtsScreen extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Debt',
+                      Text(tr.navDebt,
                           style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.w700,
@@ -56,7 +57,7 @@ class DebtsScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const MutedCaps('Total remaining',
+                        MutedCaps(tr.totalRemaining,
                             color: Colors.white54),
                         const SizedBox(height: 6),
                         SerifAmount(money(remaining),
@@ -70,7 +71,7 @@ class DebtsScreen extends StatelessWidget {
                           track: Colors.white24,
                         ),
                         const SizedBox(height: 8),
-                        Text('${paidPct.toStringAsFixed(0)}% paid off overall',
+                        Text(tr.paidOffOverall(paidPct.toStringAsFixed(0)),
                             style: const TextStyle(
                                 fontSize: 12, color: Colors.white54)),
                       ],
@@ -78,10 +79,10 @@ class DebtsScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 18),
                   if (debts.isEmpty)
-                    const Padding(
+                    Padding(
                       padding: EdgeInsets.symmetric(vertical: 30),
                       child: Text(
-                        'No debts tracked.\nTap + to add one and plan your payoff.',
+                        tr.noDebtsYet,
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 13, color: AppColors.faint),
                       ),
@@ -103,10 +104,10 @@ class DebtsScreen extends StatelessWidget {
 
 /// "72 months left" / "Paid off" label shared by the card and the detail.
 String? _monthsLeftText(DebtProgress p) {
-  if (p.remaining <= debtAmountTolerance) return 'Paid off';
+  if (p.remaining <= debtAmountTolerance) return tr.paidOff;
   final m = p.monthsLeft;
   if (m == null) return null;
-  return m == 1 ? '1 month left' : '$m months left';
+  return tr.monthsLeft(m);
 }
 
 class _DebtCard extends StatelessWidget {
@@ -120,25 +121,25 @@ class _DebtCard extends StatelessWidget {
     final pct = progress.fractionPaid(debt) * 100;
     final sub = [
       if (debt.creditor.isNotEmpty) debt.creditor,
-      if (debt.apr > 0) '${_trim(debt.apr)}% APR',
+      if (debt.apr > 0) tr.aprValue(_trim(debt.apr)),
     ].join(' · ');
 
     final monthsText = _monthsLeftText(progress);
     final String footer;
     if (debt.isFixed && debt.fixedAmount > 0) {
       footer = [
-        '${money(debt.fixedAmount)}/mo',
+        tr.perMonth(money(debt.fixedAmount)),
         ?monthsText,
       ].join(' · ');
     } else if (debt.minPayment > 0) {
       footer = [
-        'Min payment ${money(debt.minPayment)}/mo',
+        tr.minPaymentPerMonth(money(debt.minPayment)),
         ?monthsText,
       ].join(' · ');
     } else if (debt.dueDate != null) {
-      footer = 'Due ${shortDate(debt.dueDate!)}';
+      footer = tr.dueOn(shortDate(debt.dueDate!));
     } else {
-      footer = 'Tap to see payments';
+      footer = tr.tapToSeePayments;
     }
 
     return AppCard(
@@ -182,7 +183,7 @@ class _DebtCard extends StatelessWidget {
                   style: const TextStyle(fontSize: 12, color: AppColors.muted),
                 ),
               ),
-              Text('${pct.toStringAsFixed(0)}% paid',
+              Text(tr.pctPaid(pct.toStringAsFixed(0)),
                   style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
@@ -192,11 +193,11 @@ class _DebtCard extends StatelessWidget {
           if (progress.pending.isNotEmpty) ...[
             const SizedBox(height: 10),
             Align(
-              alignment: Alignment.centerLeft,
+              alignment: AlignmentDirectional.centerStart,
               child: _Pill(
                 progress.pending.length == 1
-                    ? '1 matched SMS to confirm'
-                    : '${progress.pending.length} matched SMS to confirm',
+                    ? tr.matchedSmsToConfirm(1)
+                    : tr.matchedSmsToConfirm(progress.pending.length),
               ),
             ),
           ],
@@ -378,10 +379,10 @@ class _DetailBody extends StatelessWidget {
     final payoff = p.payoffMonth(cycles: cycles);
     final ruleParts = [
       if (debt.isFixed && debt.fixedAmount > 0)
-        '${money(debt.fixedAmount)} every month',
-      if (debt.isFixed && debt.matchCard.isNotEmpty) 'from ••••${debt.matchCard}',
+        tr.everyMonth(money(debt.fixedAmount)),
+      if (debt.isFixed && debt.matchCard.isNotEmpty) tr.fromCard(debt.matchCard),
       if (debt.isFixed && debt.matchCounterparty.isNotEmpty)
-        'to ${debt.matchCounterparty}',
+        tr.toCounterparty(debt.matchCounterparty),
     ];
 
     return ListView(
@@ -398,7 +399,7 @@ class _DetailBody extends StatelessWidget {
                       color: AppColors.ink)),
             ),
             IconButton(
-              tooltip: 'Edit debt',
+              tooltip: tr.editDebt,
               icon: const Icon(Icons.edit_outlined, color: AppColors.ink),
               onPressed: () {
                 Navigator.pop(context);
@@ -416,7 +417,7 @@ class _DetailBody extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const MutedCaps('Remaining', color: Colors.white54),
+              MutedCaps(tr.remaining, color: Colors.white54),
               const SizedBox(height: 4),
               SerifAmount(money(p.remaining), size: 28, color: Colors.white),
               const SizedBox(height: 12),
@@ -428,9 +429,9 @@ class _DetailBody extends StatelessWidget {
               const SizedBox(height: 10),
               Text(
                 [
-                  'Paid ${money(p.paid)} of ${money(debt.totalAmount)}',
+                  tr.paidOfTotal(money(p.paid), money(debt.totalAmount)),
                   ?monthsText,
-                  if (payoff != null) 'last payment ${monthYear(payoff)}',
+                  if (payoff != null) tr.lastPaymentOn(monthYear(payoff)),
                 ].join(' · '),
                 style: const TextStyle(fontSize: 12, color: Colors.white70),
               ),
@@ -442,7 +443,7 @@ class _DetailBody extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text('Matched SMS to confirm (${p.pending.length})',
+                child: Text(tr.matchedSmsToConfirmCount(p.pending.length),
                     style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
@@ -454,13 +455,12 @@ class _DetailBody extends StatelessWidget {
                     await db.setPaymentStatus(s.id, PaymentStatus.confirmed);
                   }
                 },
-                child: const Text('Confirm all'),
+                child: Text(tr.confirmAll),
               ),
             ],
           ),
-          const Text(
-            'Same account and same amount as this debt. Confirm the ones that '
-            'are real payments of it.',
+          Text(
+            tr.matchedSmsHint,
             style: TextStyle(fontSize: 12, color: AppColors.muted),
           ),
           const SizedBox(height: 8),
@@ -475,14 +475,14 @@ class _DetailBody extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          tooltip: 'Not this debt',
+                          tooltip: tr.notThisDebt,
                           icon: const Icon(Icons.close,
                               color: AppColors.terracotta),
                           onPressed: () => db.setPaymentStatus(
                               s.id, PaymentStatus.rejected),
                         ),
                         IconButton(
-                          tooltip: 'Confirm payment',
+                          tooltip: tr.confirmPayment,
                           icon: const Icon(Icons.check, color: AppColors.green),
                           onPressed: () => db.setPaymentStatus(
                               s.id, PaymentStatus.confirmed),
@@ -495,7 +495,7 @@ class _DetailBody extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 18),
-        const Text('Payments',
+        Text(tr.payments,
             style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
@@ -507,7 +507,7 @@ class _DetailBody extends StatelessWidget {
               child: OutlinedButton.icon(
                 onPressed: () => _linkSms(context),
                 icon: const Icon(Icons.sms_outlined, size: 16),
-                label: const Text('Link SMS'),
+                label: Text(tr.linkSms),
                 style: _outlineStyle,
               ),
             ),
@@ -517,7 +517,7 @@ class _DetailBody extends StatelessWidget {
                 onPressed: () =>
                     _sheet<void>(context, _ManualPayment(debt: debt)),
                 icon: const Icon(Icons.add, size: 16),
-                label: const Text('Add payment'),
+                label: Text(tr.addPayment),
                 style: _outlineStyle,
               ),
             ),
@@ -527,13 +527,13 @@ class _DetailBody extends StatelessWidget {
         if (debt.paidAmount > 0)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: Text('Includes ${money(debt.paidAmount)} paid before tracking.',
+            child: Text(tr.includesPaidBefore(money(debt.paidAmount)),
                 style: const TextStyle(fontSize: 12, color: AppColors.muted)),
           ),
         if (p.payments.isEmpty)
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
-            child: Text('No payments linked yet.',
+            child: Text(tr.noPaymentsYet,
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 13, color: AppColors.faint)),
           )
@@ -546,7 +546,7 @@ class _DetailBody extends StatelessWidget {
                   _PaymentRow(
                     payment: pay,
                     trailing: IconButton(
-                      tooltip: 'Remove from this debt',
+                      tooltip: tr.removeFromDebt,
                       icon: const Icon(Icons.remove_circle_outline,
                           color: AppColors.faint, size: 20),
                       onPressed: () => _removePayment(pay),
@@ -577,9 +577,9 @@ class _PaymentRow extends StatelessWidget {
     final fromSms = payment.transactionId != null;
     final title = payment.note.isNotEmpty
         ? payment.note
-        : (fromSms ? 'Bank SMS' : 'Manual payment');
+        : (fromSms ? tr.bankSms : tr.manualPayment);
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 6, 4, 6),
+      padding: const EdgeInsetsDirectional.fromSTEB(14, 6, 4, 6),
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: AppColors.cardBorder)),
       ),
@@ -664,15 +664,15 @@ class _ManualPaymentState extends State<_ManualPayment> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Add payment to ${widget.debt.name}',
+            Text(tr.addPaymentTo(widget.debt.name),
                 style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                     color: AppColors.ink)),
             const SizedBox(height: 12),
-            _field(_amount, 'Amount (OMR)', number: true, required: true),
+            _field(_amount, tr.amountOmr(currency), number: true, required: true),
             const SizedBox(height: 12),
-            _field(_note, 'Note (optional)', capitalize: true),
+            _field(_note, tr.noteOptional, capitalize: true),
             const SizedBox(height: 12),
             OutlinedButton.icon(
               onPressed: () async {
@@ -685,7 +685,7 @@ class _ManualPaymentState extends State<_ManualPayment> {
                 if (picked != null) setState(() => _date = picked);
               },
               icon: const Icon(Icons.calendar_today, size: 16),
-              label: Text('Paid on ${shortDate(_date)}'),
+              label: Text(tr.paidOnDate(shortDate(_date))),
               style: _outlineStyle,
             ),
             const SizedBox(height: 20),
@@ -746,18 +746,18 @@ class _SmsPickerState extends State<_SmsPicker> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Select related SMS',
+          Text(tr.selectRelatedSms,
               style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
                   color: AppColors.ink)),
           const SizedBox(height: 4),
-          const Text('Money-out bank SMS from the last 6 months.',
+          Text(tr.moneyOutSmsLast6Months,
               style: TextStyle(fontSize: 12, color: AppColors.muted)),
           const SizedBox(height: 10),
           TextField(
             onChanged: (v) => setState(() => _query = v),
-            decoration: _inputDecoration('Search name or amount')
+            decoration: _inputDecoration(tr.searchNameOrAmount)
                 .copyWith(prefixIcon: const Icon(Icons.search, size: 18)),
           ),
           const SizedBox(height: 10),
@@ -765,9 +765,9 @@ class _SmsPickerState extends State<_SmsPicker> {
             child: _txns == null
                 ? const Center(child: CircularProgressIndicator())
                 : visible.isEmpty
-                    ? const Padding(
+                    ? Padding(
                         padding: EdgeInsets.symmetric(vertical: 24),
-                        child: Text('No matching bank SMS.',
+                        child: Text(tr.noMatchingSms,
                             textAlign: TextAlign.center,
                             style: TextStyle(
                                 fontSize: 13, color: AppColors.faint)),
@@ -790,7 +790,7 @@ class _SmsPickerState extends State<_SmsPicker> {
                                   : _selected.remove(t.id);
                             }),
                             title: Text(
-                              t.description.isEmpty ? 'Payment' : t.description,
+                              t.description.isEmpty ? tr.payment : t.description,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
@@ -814,8 +814,8 @@ class _SmsPickerState extends State<_SmsPicker> {
           const SizedBox(height: 12),
           _SaveButton(
             label: _selected.isEmpty
-                ? 'Done'
-                : 'Use ${_selected.length} SMS',
+                ? tr.done
+                : tr.useSmsCount(_selected.length),
             onPressed: () {
               final all = _txns ?? const <Transaction>[];
               Navigator.pop(
@@ -956,8 +956,7 @@ class _DebtEditorState extends State<_DebtEditor> {
     final hasRule = source != null ||
         (d != null && (d.matchCounterparty.isNotEmpty || d.matchCard.isNotEmpty));
     if (_isFixed && !hasRule) {
-      _toast('Select at least one SMS of this payment so the app knows '
-          'which account it goes to.');
+      _toast(tr.selectAtLeastOneSms);
       return;
     }
 
@@ -1014,9 +1013,7 @@ class _DebtEditorState extends State<_DebtEditor> {
     Navigator.pop(context);
     if (found > 0) {
       messenger.showSnackBar(SnackBar(
-        content: Text(found == 1
-            ? 'Found 1 more matching SMS. Open the debt to confirm it.'
-            : 'Found $found more matching SMS. Open the debt to confirm them.'),
+        content: Text(tr.foundMoreMatchingSms(found)),
       ));
     }
   }
@@ -1034,7 +1031,7 @@ class _DebtEditorState extends State<_DebtEditor> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(widget.existing == null ? 'Add debt' : 'Edit debt',
+                Text(widget.existing == null ? tr.addDebt : tr.editDebt,
                     style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
@@ -1051,23 +1048,23 @@ class _DebtEditorState extends State<_DebtEditor> {
               ],
             ),
             const SizedBox(height: 8),
-            _field(_name, 'Debt name', capitalize: true, required: true),
+            _field(_name, tr.debtName, capitalize: true, required: true),
             const SizedBox(height: 12),
-            _field(_creditor, 'Lender (optional)', capitalize: true),
+            _field(_creditor, tr.lenderOptional, capitalize: true),
             const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
-                    child: _field(_total, 'Total (OMR)',
+                    child: _field(_total, tr.totalOmr(currency),
                         number: true, required: true)),
                 const SizedBox(width: 12),
                 Expanded(
-                    child: _field(_paid, 'Paid before (OMR)', number: true)),
+                    child: _field(_paid, tr.paidBeforeOmr(currency), number: true)),
               ],
             ),
             const SizedBox(height: 4),
-            const Text(
-              'Paid before = anything repaid before the SMS you link below.',
+            Text(
+              tr.paidBeforeHint,
               style: TextStyle(fontSize: 11, color: AppColors.faint),
             ),
             const SizedBox(height: 14),
@@ -1075,8 +1072,8 @@ class _DebtEditorState extends State<_DebtEditor> {
               onPressed: _selectSms,
               icon: const Icon(Icons.sms_outlined, size: 16),
               label: Text(_selected.isEmpty
-                  ? 'Select related SMS'
-                  : '${_selected.length} SMS selected'),
+                  ? tr.selectRelatedSms
+                  : tr.smsSelected(_selected.length)),
               style: _outlineStyle,
             ),
             if (_selected.isNotEmpty) ...[
@@ -1087,7 +1084,7 @@ class _DebtEditorState extends State<_DebtEditor> {
                   style: const TextStyle(fontSize: 12, color: AppColors.muted),
                 ),
               if (_selected.length > 3)
-                Text('and ${_selected.length - 3} more',
+                Text(tr.andMore(_selected.length - 3),
                     style:
                         const TextStyle(fontSize: 12, color: AppColors.muted)),
             ],
@@ -1095,11 +1092,10 @@ class _DebtEditorState extends State<_DebtEditor> {
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               activeThumbColor: AppColors.green,
-              title: const Text('Fixed monthly payment?',
+              title: Text(tr.fixedMonthlyPayment,
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-              subtitle: const Text(
-                'New SMS to the same account with the same amount will be '
-                'suggested as payments.',
+              subtitle: Text(
+                tr.fixedMonthlyHint,
                 style: TextStyle(fontSize: 12),
               ),
               value: _isFixed,
@@ -1112,17 +1108,17 @@ class _DebtEditorState extends State<_DebtEditor> {
             ),
             if (_isFixed) ...[
               const SizedBox(height: 4),
-              _field(_fixedAmount, 'Monthly amount (OMR)',
+              _field(_fixedAmount, tr.monthlyAmountOmr(currency),
                   number: true, required: true),
             ],
             const SizedBox(height: 12),
             Row(
               children: [
-                Expanded(child: _field(_apr, 'APR %', number: true)),
+                Expanded(child: _field(_apr, tr.aprPercent, number: true)),
                 if (!_isFixed) ...[
                   const SizedBox(width: 12),
                   Expanded(
-                      child: _field(_minPayment, 'Min / mo (OMR)',
+                      child: _field(_minPayment, tr.minPerMonthOmr(currency),
                           number: true)),
                 ],
               ],
@@ -1132,8 +1128,8 @@ class _DebtEditorState extends State<_DebtEditor> {
               onPressed: _pickDate,
               icon: const Icon(Icons.calendar_today, size: 16),
               label: Text(_dueDate == null
-                  ? 'Due date (optional)'
-                  : 'Due: ${shortDate(_dueDate!)}'),
+                  ? tr.dueDateOptional
+                  : tr.dueColon(shortDate(_dueDate!))),
               style: _outlineStyle,
             ),
             const SizedBox(height: 20),
@@ -1146,10 +1142,10 @@ class _DebtEditorState extends State<_DebtEditor> {
 }
 
 class _SaveButton extends StatelessWidget {
-  const _SaveButton({required this.onPressed, this.label = 'Save'});
+  const _SaveButton({required this.onPressed, this.label});
 
   final VoidCallback onPressed;
-  final String label;
+  final String? label;
 
   @override
   Widget build(BuildContext context) {
@@ -1163,7 +1159,7 @@ class _SaveButton extends StatelessWidget {
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(100)),
         ),
-        child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+        child: Text(label ?? tr.save, style: const TextStyle(fontWeight: FontWeight.w700)),
       ),
     );
   }
@@ -1201,9 +1197,9 @@ Widget _field(
         ? (v) {
             if (number) {
               final n = double.tryParse(v ?? '');
-              return (n == null || n <= 0) ? 'Invalid' : null;
+              return (n == null || n <= 0) ? tr.invalid : null;
             }
-            return (v == null || v.trim().isEmpty) ? 'Required' : null;
+            return (v == null || v.trim().isEmpty) ? tr.required : null;
           }
         : null,
   );

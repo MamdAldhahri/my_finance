@@ -1,8 +1,7 @@
 import 'dart:math' as math;
 
-import 'package:intl/intl.dart';
-
 import '../database/database.dart';
+import '../l10n/language.dart';
 
 /// Day of the month the salary normally lands on. Used as the fallback cycle
 /// start when no salary SMS is found for a month.
@@ -40,8 +39,8 @@ class PayCycle {
   /// "Since 16 Oct" for a cycle that is still running, otherwise
   /// "16 Sep – 15 Oct" (last day inclusive).
   String label({DateTime? now}) {
-    final f = DateFormat('d MMM');
-    if (end.isAfter(now ?? DateTime.now())) return 'Since ${f.format(start)}';
+    final f = appDateFormat('d MMM');
+    if (end.isAfter(now ?? DateTime.now())) return tr.cycleSince(f.format(start));
     final last = DateTime(end.year, end.month, end.day - 1);
     return '${f.format(start)} – ${f.format(last)}';
   }

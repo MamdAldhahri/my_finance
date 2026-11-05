@@ -1,8 +1,10 @@
 import 'package:intl/intl.dart';
 
+import 'l10n/language.dart';
+
 /// App-wide currency formatting. Omani Rial uses 3 decimal places and the
 /// design groups thousands (e.g. "1,850.000").
-final NumberFormat _amount = NumberFormat('#,##0.000');
+final NumberFormat _amount = NumberFormat('#,##0.000', 'en');
 
 /// The numeric part of an amount, grouped with 3 decimals: "1,850.000".
 /// Always non-negative — carry the sign separately where needed.
@@ -13,17 +15,18 @@ String amountText(double value) => _amount.format(value.abs());
 /// smaller than the number.
 String money(double value) => '${amountText(value)} $currency';
 
-/// The currency label that follows every amount.
-const currency = 'OMR';
+/// The currency label that follows every amount: "OMR", or "ر.ع." in Arabic.
+String get currency => tr.currency;
 
 /// Short date, e.g. "20 Jul 2026".
-String shortDate(DateTime date) => DateFormat('d MMM yyyy').format(date);
+String shortDate(DateTime date) => appDateFormat('d MMM yyyy').format(date);
 
 /// Compact day label used in transaction rows, e.g. "Aug 2".
-String dayLabel(DateTime date) => DateFormat('MMM d').format(date);
+String dayLabel(DateTime date) => appDateFormat('MMM d').format(date);
 
 /// Full month name, e.g. "August".
-String monthName(DateTime date) => DateFormat('MMMM').format(date);
+String monthName(DateTime date) => appDateFormat('MMMM').format(date);
 
 /// Month + year for goal/debt due dates, e.g. "Dec 2026".
-String monthYear(DateTime date) => DateFormat('MMM yyyy').format(date);
+String monthYear(DateTime date) => appDateFormat('MMM yyyy').format(date);
+

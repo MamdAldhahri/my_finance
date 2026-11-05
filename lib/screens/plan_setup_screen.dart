@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../database/database.dart';
 import '../format.dart';
+import '../l10n/language.dart';
 import '../main.dart';
 import '../services/income_plan.dart';
 import '../theme.dart';
@@ -98,8 +99,8 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
                     color: AppColors.ink,
                   ),
                 ),
-                const Text(
-                  'Plan your salary',
+                Text(
+                  tr.planYourSalary,
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
@@ -109,9 +110,8 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
               ],
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Every payday your salary is split into four parts. The app '
-              'then compares what you actually spend and save against it.',
+            Text(
+              tr.planSetupIntro,
               style: TextStyle(
                 fontSize: 12.5,
                 color: AppColors.muted,
@@ -121,8 +121,8 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
             const SizedBox(height: 18),
             _salaryCard(),
             const SizedBox(height: 20),
-            const Text(
-              'Start from',
+            Text(
+              tr.startFrom,
               style: TextStyle(fontSize: 12.5, color: AppColors.muted),
             ),
             const SizedBox(height: 8),
@@ -139,10 +139,10 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
             const SizedBox(height: 6),
             Text(
               left == 0
-                  ? 'Total 100%'
+                  ? tr.total100
                   : left > 0
-                  ? 'Total $_total% · $left% left to assign'
-                  : 'Total $_total% · ${-left}% too much',
+                  ? tr.totalLeftToAssign(_total, left)
+                  : tr.totalTooMuch(_total, -left),
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13,
@@ -160,16 +160,14 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
                   borderRadius: BorderRadius.circular(14),
                 ),
               ),
-              child: const Text(
-                'Save plan',
+              child: Text(
+                tr.savePlan,
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
               ),
             ),
             const SizedBox(height: 14),
-            const Text(
-              'Tip: keep Emergency & Savings and Investments in a separate '
-              'bank account, so the money you planned to keep doesn\'t get '
-              'spent by accident.',
+            Text(
+              tr.planTip,
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 12,
@@ -189,8 +187,8 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Your salary',
+          Text(
+            tr.yourSalary,
             style: TextStyle(fontSize: 12.5, color: AppColors.muted),
           ),
           const SizedBox(height: 6),
@@ -198,7 +196,7 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
             SerifAmount(money(d.amount), size: 24),
             const SizedBox(height: 4),
             Text(
-              'Last salary SMS: ${shortDate(d.date)}',
+              tr.lastSalarySms(shortDate(d.date)),
               style: const TextStyle(fontSize: 12, color: AppColors.faint),
             ),
             const SizedBox(height: 12),
@@ -209,8 +207,8 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
             onChanged: (_) => setState(() {}),
             decoration: InputDecoration(
               isDense: true,
-              hintText: d == null ? 'Monthly salary (OMR)' : 'Optional',
-              labelText: d == null ? 'Monthly salary' : 'Backup salary',
+              hintText: d == null ? tr.monthlySalaryOmr(currency) : tr.optional,
+              labelText: d == null ? tr.monthlySalary : tr.backupSalary,
               suffixText: currency,
               filled: true,
               fillColor: Colors.white,
@@ -223,10 +221,8 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
           const SizedBox(height: 6),
           Text(
             d == null
-                ? 'No salary SMS found yet. Once one arrives, the plan uses '
-                      'the real amount each payday.'
-                : 'Used when this month\'s salary SMS hasn\'t arrived yet. '
-                      'If left empty, last payday\'s salary is used.',
+                ? tr.noSalarySmsYet
+                : tr.backupSalaryHint,
             style: const TextStyle(
               fontSize: 11.5,
               color: AppColors.faint,

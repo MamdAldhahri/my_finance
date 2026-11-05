@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../database/database.dart';
 import '../format.dart';
+import '../l10n/language.dart';
 import '../theme.dart';
 import 'ui.dart';
 
@@ -35,7 +36,7 @@ class TransactionRow extends StatelessWidget {
     final credit = txn.isCredit;
     final accent = credit ? AppColors.incomeColor : AppColors.expenseColor;
     final title = txn.description.isEmpty
-        ? (credit ? 'Deposit' : 'Payment')
+        ? (credit ? tr.deposit : tr.payment)
         : txn.description;
     final initial = title.characters.first.toUpperCase();
 
@@ -118,7 +119,7 @@ class TransactionRow extends StatelessWidget {
 
   String _subtitle() {
     final source = txn.source == TxSource.manual
-        ? 'Cash'
+        ? tr.cash
         : bankName(txn.sender);
     return '$source · ${dayLabel(txn.date)}';
   }
@@ -157,7 +158,7 @@ String bankName(String sender) {
       .replaceAll(RegExp(r'[-_]+'), ' ')
       .replaceAllMapped(RegExp(r'([a-z])([A-Z])'), (m) => '${m[1]} ${m[2]}');
   final words = spaced.split(RegExp(r'\s+')).where((w) => w.isNotEmpty);
-  if (words.isEmpty) return 'Bank';
+  if (words.isEmpty) return tr.bank;
   return words.map((w) => w[0].toUpperCase() + w.substring(1)).join(' ');
 }
 
@@ -173,8 +174,8 @@ class _UnknownTag extends StatelessWidget {
         color: AppColors.inactive.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: const Text(
-        'Unknown',
+      child: Text(
+        tr.unknown,
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w600,

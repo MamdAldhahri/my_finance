@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../database/database.dart';
+import '../l10n/language.dart';
 import '../theme.dart';
 import 'category_matching.dart';
 import 'pay_cycle.dart';
@@ -11,17 +12,17 @@ import 'pay_cycle.dart';
 /// Display names, short explanations and colours for the plan buckets.
 extension BucketInfo on Bucket {
   String get label => switch (this) {
-    Bucket.expenses => 'Expenses',
-    Bucket.extras => 'Extras',
-    Bucket.savings => 'Emergency & Savings',
-    Bucket.investments => 'Investments',
+    Bucket.expenses => tr.bucketExpenses,
+    Bucket.extras => tr.bucketExtras,
+    Bucket.savings => tr.bucketSavings,
+    Bucket.investments => tr.bucketInvestments,
   };
 
   String get hint => switch (this) {
-    Bucket.expenses => 'Needs: rent, groceries, fuel, bills, debt payments',
-    Bucket.extras => 'Wants: eating out, shopping, fun',
-    Bucket.savings => 'Your safety net and savings goals',
-    Bucket.investments => 'Long-term growth and paying debt off early',
+    Bucket.expenses => tr.bucketExpensesHint,
+    Bucket.extras => tr.bucketExtrasHint,
+    Bucket.savings => tr.bucketSavingsHint,
+    Bucket.investments => tr.bucketInvestmentsHint,
   };
 
   Color get color => switch (this) {
@@ -41,10 +42,10 @@ enum PlanPreset { balanced, emergencyFirst, aggressive, custom }
 
 extension PlanPresetInfo on PlanPreset {
   String get label => switch (this) {
-    PlanPreset.balanced => 'Balanced',
-    PlanPreset.emergencyFirst => 'Emergency first',
-    PlanPreset.aggressive => 'Aggressive saver',
-    PlanPreset.custom => 'Custom',
+    PlanPreset.balanced => tr.presetBalanced,
+    PlanPreset.emergencyFirst => tr.presetEmergencyFirst,
+    PlanPreset.aggressive => tr.presetAggressive,
+    PlanPreset.custom => tr.presetCustom,
   };
 
   /// Percentages in [Bucket] order, or null for [PlanPreset.custom].

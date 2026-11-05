@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../format.dart';
 import '../theme.dart';
 
 /// A white rounded card with the design's hairline border. The default padding
@@ -141,33 +142,50 @@ class SerifAmount extends StatelessWidget {
 }
 
 /// Shows a money label like "-0.399 OMR" with the trailing currency drawn
-/// smaller (and a little lighter) than the number. Text without a trailing
-/// " OMR" is shown as is.
+/// smaller (and a little lighter) than the number. Text without the trailing
+/// currency is shown as is.
 class AmountText extends StatelessWidget {
   const AmountText(this.text, {super.key, this.style});
 
   final String text;
   final TextStyle? style;
 
-  static const _suffix = ' OMR';
-
   @override
   Widget build(BuildContext context) {
     final base = DefaultTextStyle.of(context).style.merge(style);
-    if (!text.endsWith(_suffix)) return Text(text, style: base);
+    final suffix = ' $currency';
+    if (!text.endsWith(suffix)) return Text(text, style: base);
     final size = base.fontSize ?? 14;
+    final number = text.substring(0, text.length - suffix.length);
+    final currencyStyle = TextStyle(
+      fontSize: size * 0.62,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.3,
+    );
+    if (Directionality.of(context) == TextDirection.rtl) {
+      // A phrase like "120.000 من 500.000 ر.ع." already reads right in Arabic.
+      if (!RegExp(r'^[-+]?[\d,.]+$').hasMatch(number)) {
+        return Text(text, style: base);
+      }
+      // Arabic: the currency sits to the left of the number, and the number
+      // keeps its own left-to-right paragraph so a sign stays attached
+      // ("ر.ع. -0.399").
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        textDirection: TextDirection.ltr,
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: [
+          Text('$currency ', style: base.merge(currencyStyle)),
+          Text(number, style: base, textDirection: TextDirection.ltr),
+        ],
+      );
+    }
     return Text.rich(
       TextSpan(
         children: [
-          TextSpan(text: text.substring(0, text.length - _suffix.length)),
-          TextSpan(
-            text: _suffix,
-            style: TextStyle(
-              fontSize: size * 0.62,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.3,
-            ),
-          ),
+          TextSpan(text: number),
+          TextSpan(text: suffix, style: currencyStyle),
         ],
       ),
       style: base,

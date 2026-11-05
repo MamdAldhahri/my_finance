@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../database/database.dart';
 import '../format.dart';
+import '../l10n/language.dart';
 import '../services/income_plan.dart';
 import '../theme.dart';
 import 'ui.dart';
@@ -33,8 +34,8 @@ class PlanCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Text(
-                'This cycle',
+              Text(
+                tr.thisCycle,
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
@@ -45,7 +46,7 @@ class PlanCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   '${r.cycle.label(now: r.now)} · ${_daysLeftText(r)}',
-                  textAlign: TextAlign.right,
+                  textAlign: TextAlign.end,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 12, color: AppColors.muted),
@@ -60,9 +61,8 @@ class PlanCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           if (r.income <= 0)
-            const Text(
-              'No salary found yet. Add your monthly salary in the plan to '
-              'see planned amounts.',
+            Text(
+              tr.noSalaryYetHint,
               style: TextStyle(
                 fontSize: 12.5,
                 color: AppColors.muted,
@@ -88,18 +88,18 @@ class PlanCard extends StatelessWidget {
 
 String _daysLeftText(CycleReport r) {
   final d = r.daysLeft;
-  if (!r.isRunning) return 'ended';
-  return d == 1 ? '1 day left' : '$d days left';
+  if (!r.isRunning) return tr.cycleEnded;
+  return tr.daysLeft(d);
 }
 
 /// "Salary 850.000 OMR" plus where the figure came from.
 String incomeLine(CycleReport r) {
   final amount = money(r.income);
   return switch (r.incomeSource) {
-    IncomeSource.detected => 'Salary $amount',
-    IncomeSource.expected => 'Planned on $amount (salary SMS not here yet)',
-    IncomeSource.lastCycle => 'Planned on last salary, $amount',
-    IncomeSource.none => 'No salary to plan with yet',
+    IncomeSource.detected => tr.incomeDetected(amount),
+    IncomeSource.expected => tr.incomeExpected(amount),
+    IncomeSource.lastCycle => tr.incomeLastCycle(amount),
+    IncomeSource.none => tr.incomeNone,
   };
 }
 
@@ -138,12 +138,12 @@ class BucketProgressRow extends StatelessWidget {
     final String status;
     if (bucket.isSpending) {
       status = over
-          ? '${amountText(actual - planned)} over'
-          : '${amountText(planned - actual)} left';
+          ? tr.amountOver(amountText(actual - planned))
+          : tr.amountLeft(amountText(planned - actual));
     } else {
       status = actual >= planned - 0.0005
-          ? 'Done'
-          : '${amountText(planned - actual)} to go';
+          ? tr.done
+          : tr.amountToGo(amountText(planned - actual));
     }
 
     return Column(
@@ -165,6 +165,8 @@ class BucketProgressRow extends StatelessWidget {
             ),
             Text(
               '${amountText(actual)} / ${amountText(planned)}',
+              // Numbers read "spent / planned" in Arabic too.
+              textDirection: TextDirection.ltr,
               style: const TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
@@ -177,7 +179,7 @@ class BucketProgressRow extends StatelessWidget {
         ProgressBar(fraction: frac, color: barColor, height: 6),
         const SizedBox(height: 3),
         Align(
-          alignment: Alignment.centerRight,
+          alignment: AlignmentDirectional.centerEnd,
           child: Text(
             status,
             style: TextStyle(
@@ -208,9 +210,9 @@ class _UnknownLine extends StatelessWidget {
         children: [
           const Icon(Icons.help_outline, size: 15, color: AppColors.muted),
           const SizedBox(width: 8),
-          const Expanded(
+          Expanded(
             child: Text(
-              'Unknown: spending with no category yet. File it from the Categories tab.',
+              tr.unknownSpendingHint,
               style: TextStyle(fontSize: 12, color: AppColors.muted),
             ),
           ),
@@ -247,8 +249,8 @@ class _SafeToSpend extends StatelessWidget {
           Expanded(
             child: Text(
               left <= 0
-                  ? 'Spending is over plan this cycle'
-                  : 'Safe to spend per day',
+                  ? tr.spendingOverPlan
+                  : tr.safeToSpendPerDay,
               style: const TextStyle(fontSize: 12.5, color: Colors.white70),
             ),
           ),
@@ -292,12 +294,12 @@ class _SetUpPrompt extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Plan your salary',
+                  tr.planYourSalary,
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
@@ -306,8 +308,7 @@ class _SetUpPrompt extends StatelessWidget {
                 ),
                 SizedBox(height: 2),
                 Text(
-                  'Split it into Expenses, Extras, Emergency & Savings '
-                  'and Investments.',
+                  tr.planYourSalaryHint,
                   style: TextStyle(
                     fontSize: 12,
                     color: AppColors.muted,

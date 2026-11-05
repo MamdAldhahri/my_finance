@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../database/database.dart';
 import '../format.dart';
+import '../l10n/language.dart';
 import '../main.dart';
 import '../theme.dart';
 import '../widgets/ui.dart';
@@ -25,7 +26,7 @@ class GoalsScreen extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Goals',
+                  Text(tr.navGoals,
                       style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.w700,
@@ -49,10 +50,10 @@ class GoalsScreen extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               if (goals.isEmpty)
-                const Padding(
+                Padding(
                   padding: EdgeInsets.symmetric(vertical: 30),
                   child: Text(
-                    'No goals yet.\nTap + to set a savings target.',
+                    tr.noGoalsYet,
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 13, color: AppColors.faint),
                   ),
@@ -115,12 +116,11 @@ class _GoalCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                '${amountText(goal.savedAmount)} of '
-                '${money(goal.targetAmount)}',
+                tr.savedOfTarget(amountText(goal.savedAmount), money(goal.targetAmount)),
                 style: const TextStyle(fontSize: 12, color: AppColors.muted),
               ),
               if (goal.targetDate != null)
-                Text('by ${monthYear(goal.targetDate!)}',
+                Text(tr.byDate(monthYear(goal.targetDate!)),
                     style:
                         const TextStyle(fontSize: 12, color: AppColors.faint)),
             ],
@@ -229,7 +229,7 @@ class _GoalEditorState extends State<_GoalEditor> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(widget.existing == null ? 'Add goal' : 'Edit goal',
+                Text(widget.existing == null ? tr.addGoal : tr.editGoal,
                     style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
@@ -246,15 +246,15 @@ class _GoalEditorState extends State<_GoalEditor> {
               ],
             ),
             const SizedBox(height: 8),
-            _tf(_name, 'Goal name', capitalize: true, required: true),
+            _tf(_name, tr.goalName, capitalize: true, required: true),
             const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
-                    child: _tf(_target, 'Target (OMR)',
+                    child: _tf(_target, tr.targetOmr(currency),
                         number: true, required: true)),
                 const SizedBox(width: 12),
-                Expanded(child: _tf(_saved, 'Saved (OMR)', number: true)),
+                Expanded(child: _tf(_saved, tr.savedOmr(currency), number: true)),
               ],
             ),
             const SizedBox(height: 12),
@@ -262,8 +262,8 @@ class _GoalEditorState extends State<_GoalEditor> {
               onPressed: _pickDate,
               icon: const Icon(Icons.calendar_today, size: 16),
               label: Text(_targetDate == null
-                  ? 'Target date (optional)'
-                  : 'Target: ${shortDate(_targetDate!)}'),
+                  ? tr.targetDateOptional
+                  : tr.targetDate(shortDate(_targetDate!))),
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.ink,
                 side: const BorderSide(color: Color(0x261E2E2A)),
@@ -282,7 +282,7 @@ class _GoalEditorState extends State<_GoalEditor> {
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(100)),
                 ),
-                child: const Text('Save',
+                child: Text(tr.save,
                     style: TextStyle(fontWeight: FontWeight.w700)),
               ),
             ),
@@ -322,9 +322,9 @@ class _GoalEditorState extends State<_GoalEditor> {
           ? (v) {
               if (number) {
                 final n = double.tryParse(v ?? '');
-                return (n == null || n <= 0) ? 'Invalid' : null;
+                return (n == null || n <= 0) ? tr.invalid : null;
               }
-              return (v == null || v.trim().isEmpty) ? 'Required' : null;
+              return (v == null || v.trim().isEmpty) ? tr.required : null;
             }
           : null,
     );

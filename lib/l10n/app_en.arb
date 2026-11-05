@@ -1,0 +1,835 @@
+{
+  "@@locale": "en",
+  "appTitle": "My Finance",
+  "currency": "OMR",
+  "navOverview": "Overview",
+  "navCategories": "Categories",
+  "navDebt": "Debt",
+  "navGoals": "Goals",
+  "navTransactions": "Transactions",
+  "bucketExpenses": "Expenses",
+  "bucketExtras": "Extras",
+  "bucketSavings": "Emergency & Savings",
+  "bucketInvestments": "Investments",
+  "bucketExpensesHint": "Needs: rent, groceries, fuel, bills, debt payments",
+  "bucketExtrasHint": "Wants: eating out, shopping, fun",
+  "bucketSavingsHint": "Your safety net and savings goals",
+  "bucketInvestmentsHint": "Long-term growth and paying debt off early",
+  "presetBalanced": "Balanced",
+  "presetEmergencyFirst": "Emergency first",
+  "presetAggressive": "Aggressive saver",
+  "presetCustom": "Custom",
+  "periodDaily": "Daily",
+  "periodMonthly": "Monthly",
+  "periodYearly": "Yearly",
+  "today": "Today",
+  "yesterday": "Yesterday",
+  "sinceDate": "since {date}",
+  "@sinceDate": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "cycleSince": "Since {date}",
+  "@cycleSince": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "payment": "Payment",
+  "deposit": "Deposit",
+  "addedByHandNoSms": "Added by hand, so there is no SMS.",
+  "changeCategory": "Change category",
+  "close": "Close",
+  "cash": "Cash",
+  "bank": "Bank",
+  "unknown": "Unknown",
+  "thisCycle": "This cycle",
+  "noSalaryYetHint": "No salary found yet. Add your monthly salary in the plan to see planned amounts.",
+  "cycleEnded": "ended",
+  "daysLeft": "{count, plural, =1{1 day left} other{{count} days left}}",
+  "@daysLeft": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "incomeDetected": "Salary {amount}",
+  "@incomeDetected": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "incomeExpected": "Planned on {amount} (salary SMS not here yet)",
+  "@incomeExpected": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "incomeLastCycle": "Planned on last salary, {amount}",
+  "@incomeLastCycle": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "incomeNone": "No salary to plan with yet",
+  "amountOver": "{amount} over",
+  "@amountOver": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "amountLeft": "{amount} left",
+  "@amountLeft": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "done": "Done",
+  "amountToGo": "{amount} to go",
+  "@amountToGo": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "unknownSpendingHint": "Unknown: spending with no category yet. File it from the Categories tab.",
+  "spendingOverPlan": "Spending is over plan this cycle",
+  "safeToSpendPerDay": "Safe to spend per day",
+  "planYourSalary": "Plan your salary",
+  "planYourSalaryHint": "Split it into Expenses, Extras, Emergency & Savings and Investments.",
+  "debtLeft": "Debt left",
+  "goalsSaved": "Goals saved",
+  "recentActivity": "Recent activity",
+  "noTransactionsYet": "No transactions yet.\nEnable bank-SMS import from the Transactions tab.",
+  "goodMorning": "Good morning",
+  "goodAfternoon": "Good afternoon",
+  "goodEvening": "Good evening",
+  "totalBalance": "Total balance",
+  "vsBeforePayday": "vs before payday",
+  "yourAccounts": "Your accounts",
+  "switchLanguage": "Switch language",
+  "languageToggleLabel": "ع",
+  "incomePlan": "Income plan",
+  "editPlan": "Edit plan",
+  "noPlanYet": "No plan yet.",
+  "previousCycles": "Previous cycles",
+  "measuredAgainstSplit": "Measured against your current split.",
+  "noSalaryThisCycle": "No salary found for this cycle.",
+  "amountInUnknown": "{amount} in Unknown (no category)",
+  "@amountInUnknown": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "planSetupIntro": "Every payday your salary is split into four parts. The app then compares what you actually spend and save against it.",
+  "startFrom": "Start from",
+  "total100": "Total 100%",
+  "totalLeftToAssign": "Total {total}% · {left}% left to assign",
+  "@totalLeftToAssign": {
+    "placeholders": {
+      "total": {
+        "type": "int"
+      },
+      "left": {
+        "type": "int"
+      }
+    }
+  },
+  "totalTooMuch": "Total {total}% · {over}% too much",
+  "@totalTooMuch": {
+    "placeholders": {
+      "total": {
+        "type": "int"
+      },
+      "over": {
+        "type": "int"
+      }
+    }
+  },
+  "savePlan": "Save plan",
+  "planTip": "Tip: keep Emergency & Savings and Investments in a separate bank account, so the money you planned to keep doesn't get spent by accident.",
+  "yourSalary": "Your salary",
+  "lastSalarySms": "Last salary SMS: {date}",
+  "@lastSalarySms": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "monthlySalaryOmr": "Monthly salary ({currency})",
+  "@monthlySalaryOmr": {
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      }
+    }
+  },
+  "optional": "Optional",
+  "monthlySalary": "Monthly salary",
+  "backupSalary": "Backup salary",
+  "noSalarySmsYet": "No salary SMS found yet. Once one arrives, the plan uses the real amount each payday.",
+  "backupSalaryHint": "Used when this month's salary SMS hasn't arrived yet. If left empty, last payday's salary is used.",
+  "noGoalsYet": "No goals yet.\nTap + to set a savings target.",
+  "savedOfTarget": "{saved} of {target}",
+  "@savedOfTarget": {
+    "placeholders": {
+      "saved": {
+        "type": "String"
+      },
+      "target": {
+        "type": "String"
+      }
+    }
+  },
+  "byDate": "by {date}",
+  "@byDate": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "addGoal": "Add goal",
+  "editGoal": "Edit goal",
+  "goalName": "Goal name",
+  "targetOmr": "Target ({currency})",
+  "@targetOmr": {
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      }
+    }
+  },
+  "savedOmr": "Saved ({currency})",
+  "@savedOmr": {
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      }
+    }
+  },
+  "targetDateOptional": "Target date (optional)",
+  "targetDate": "Target: {date}",
+  "@targetDate": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "save": "Save",
+  "invalid": "Invalid",
+  "required": "Required",
+  "totalRemaining": "Total remaining",
+  "paidOffOverall": "{pct}% paid off overall",
+  "@paidOffOverall": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
+  "noDebtsYet": "No debts tracked.\nTap + to add one and plan your payoff.",
+  "paidOff": "Paid off",
+  "monthsLeft": "{count, plural, =1{1 month left} other{{count} months left}}",
+  "@monthsLeft": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aprValue": "{apr}% APR",
+  "@aprValue": {
+    "placeholders": {
+      "apr": {
+        "type": "String"
+      }
+    }
+  },
+  "perMonth": "{amount}/mo",
+  "@perMonth": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "minPaymentPerMonth": "Min payment {amount}/mo",
+  "@minPaymentPerMonth": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "dueOn": "Due {date}",
+  "@dueOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "tapToSeePayments": "Tap to see payments",
+  "pctPaid": "{pct}% paid",
+  "@pctPaid": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
+  "matchedSmsToConfirm": "{count, plural, =1{1 matched SMS to confirm} other{{count} matched SMS to confirm}}",
+  "@matchedSmsToConfirm": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "everyMonth": "{amount} every month",
+  "@everyMonth": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "fromCard": "from ••••{card}",
+  "@fromCard": {
+    "placeholders": {
+      "card": {
+        "type": "String"
+      }
+    }
+  },
+  "toCounterparty": "to {name}",
+  "@toCounterparty": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "editDebt": "Edit debt",
+  "remaining": "Remaining",
+  "paidOfTotal": "Paid {paid} of {total}",
+  "@paidOfTotal": {
+    "placeholders": {
+      "paid": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "lastPaymentOn": "last payment {date}",
+  "@lastPaymentOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "matchedSmsToConfirmCount": "Matched SMS to confirm ({count})",
+  "@matchedSmsToConfirmCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "confirmAll": "Confirm all",
+  "matchedSmsHint": "Same account and same amount as this debt. Confirm the ones that are real payments of it.",
+  "notThisDebt": "Not this debt",
+  "confirmPayment": "Confirm payment",
+  "payments": "Payments",
+  "linkSms": "Link SMS",
+  "addPayment": "Add payment",
+  "includesPaidBefore": "Includes {amount} paid before tracking.",
+  "@includesPaidBefore": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "noPaymentsYet": "No payments linked yet.",
+  "removeFromDebt": "Remove from this debt",
+  "bankSms": "Bank SMS",
+  "manualPayment": "Manual payment",
+  "addPaymentTo": "Add payment to {name}",
+  "@addPaymentTo": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "amountOmr": "Amount ({currency})",
+  "@amountOmr": {
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      }
+    }
+  },
+  "noteOptional": "Note (optional)",
+  "paidOnDate": "Paid on {date}",
+  "@paidOnDate": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "selectRelatedSms": "Select related SMS",
+  "moneyOutSmsLast6Months": "Money-out bank SMS from the last 6 months.",
+  "searchNameOrAmount": "Search name or amount",
+  "noMatchingSms": "No matching bank SMS.",
+  "useSmsCount": "{count, plural, =1{Use 1 SMS} other{Use {count} SMS}}",
+  "@useSmsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "selectAtLeastOneSms": "Select at least one SMS of this payment so the app knows which account it goes to.",
+  "foundMoreMatchingSms": "{count, plural, =1{Found 1 more matching SMS. Open the debt to confirm it.} other{Found {count} more matching SMS. Open the debt to confirm them.}}",
+  "@foundMoreMatchingSms": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "addDebt": "Add debt",
+  "debtName": "Debt name",
+  "lenderOptional": "Lender (optional)",
+  "totalOmr": "Total ({currency})",
+  "@totalOmr": {
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      }
+    }
+  },
+  "paidBeforeOmr": "Paid before ({currency})",
+  "@paidBeforeOmr": {
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      }
+    }
+  },
+  "paidBeforeHint": "Paid before = anything repaid before the SMS you link below.",
+  "smsSelected": "{count, plural, =1{1 SMS selected} other{{count} SMS selected}}",
+  "@smsSelected": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "andMore": "and {count} more",
+  "@andMore": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "fixedMonthlyPayment": "Fixed monthly payment?",
+  "fixedMonthlyHint": "New SMS to the same account with the same amount will be suggested as payments.",
+  "monthlyAmountOmr": "Monthly amount ({currency})",
+  "@monthlyAmountOmr": {
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      }
+    }
+  },
+  "aprPercent": "APR %",
+  "minPerMonthOmr": "Min / mo ({currency})",
+  "@minPerMonthOmr": {
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      }
+    }
+  },
+  "dueDateOptional": "Due date (optional)",
+  "dueColon": "Due: {date}",
+  "@dueColon": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "smsPermissionDenied": "SMS permission denied. Enable it in system settings to auto-import bank transactions.",
+  "noNewBankMessages": "No new bank messages found.",
+  "importedTransactions": "{count, plural, =1{Imported 1 transaction.} other{Imported {count} transactions.}}",
+  "@importedTransactions": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "incomeWithCycle": "Income · {cycle}",
+  "@incomeWithCycle": {
+    "placeholders": {
+      "cycle": {
+        "type": "String"
+      }
+    }
+  },
+  "expensesWithCycle": "Expenses · {cycle}",
+  "@expensesWithCycle": {
+    "placeholders": {
+      "cycle": {
+        "type": "String"
+      }
+    }
+  },
+  "filterAll": "All",
+  "income": "Income",
+  "expenses": "Expenses",
+  "noTransactionsTapGear": "No transactions yet.\nTap the gear to pick your bank chat, or + to add one manually.",
+  "nothingInFilter": "Nothing in this filter.",
+  "whichChatIsBank": "Which chat is your bank?",
+  "pickBankSenders": "Pick every sender that texts you card alerts. Only these are read.",
+  "noSmsFoundAndroid": "No SMS found. This works on Android with SMS permission granted.",
+  "addTransaction": "Add a transaction",
+  "oneOffEntryHint": "A one-off entry that is not from a bank SMS.",
+  "whatWasIt": "What was it?",
+  "enterAmount": "Enter an amount",
+  "expense": "Expense",
+  "category": "Category",
+  "none": "None",
+  "categoryWithBucket": "{name} · {bucket}",
+  "@categoryWithBucket": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "bucket": {
+        "type": "String"
+      }
+    }
+  },
+  "dateLabel": "Date: {date}",
+  "@dateLabel": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "thisTransaction": "this transaction",
+  "addToCategory": "Add to category",
+  "debtPaymentNotInCategory": "This is counted as a debt payment, so it is not in a category. You can still file it here.",
+  "filesEveryNamed": "Files every \"{title}\" transaction into this category. Remove only this one with the button below.",
+  "@filesEveryNamed": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "fileUnderCategory": "File \"{title}\" under a category.",
+  "@fileUnderCategory": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "noCategoriesYetCreate": "No categories yet — create one in the Categories tab first.",
+  "removeThisOne": "Remove this one",
+  "delete": "Delete",
+  "giveCategoryName": "Give the category a name first.",
+  "removeMatchingSmsQ": "Remove this matching SMS?",
+  "removeRuleBody": "Messages from \"{name}\" will stop filing here and move to Unknown.",
+  "@removeRuleBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "cancel": "Cancel",
+  "remove": "Remove",
+  "removeMessageQ": "Remove this message?",
+  "removeMessageBody": "{name} · {amount} on {date} will move to Unknown. Other messages from the same place stay in this category.",
+  "@removeMessageBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "newCategory": "New category",
+  "editCategory": "Edit category",
+  "categoryName": "Category name",
+  "egGroceries": "e.g. Groceries",
+  "matchingSms": "Matching SMS",
+  "matchingSmsHint": "Pick example SMS. Every past and future SMS to the same shop or person files here automatically. Turn on \"Only this amount\" when the same person gets money for different things.",
+  "pickExampleSms": "Pick example SMS",
+  "orTypeShopName": "Or type a shop name",
+  "inThisCategoryCount": "In this category ({count})",
+  "@inThisCategoryCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "inThisCategoryPeriodCount": "In this category · {period} ({count})",
+  "@inThisCategoryPeriodCount": {
+    "placeholders": {
+      "period": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "showAll": "Show all",
+  "thisPeriod": "This period",
+  "tapXToRemoveHint": "Tap ✕ to take out just that one transaction. SMS counted as a debt payment stay with the debt.",
+  "nothingMatchesYet": "Nothing matches yet.",
+  "noSmsInCategoryFor": "No SMS in this category for {period}.",
+  "@noSmsInCategoryFor": {
+    "placeholders": {
+      "period": {
+        "type": "String"
+      }
+    }
+  },
+  "removeFromCategory": "Remove from this category",
+  "removedCount": "Removed ({count})",
+  "@removedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "putBack": "Put back",
+  "deleteCategory": "Delete category",
+  "bucket": "Bucket",
+  "remainingIncome": "Remaining income",
+  "spentWithPeriod": "Spent · {period}",
+  "@spentWithPeriod": {
+    "placeholders": {
+      "period": {
+        "type": "String"
+      }
+    }
+  },
+  "incomeLeft": "Income {income} · left {left}",
+  "@incomeLeft": {
+    "placeholders": {
+      "income": {
+        "type": "String"
+      },
+      "left": {
+        "type": "String"
+      }
+    }
+  },
+  "incomeOverBy": "Income {income} · over by {over}",
+  "@incomeOverBy": {
+    "placeholders": {
+      "income": {
+        "type": "String"
+      },
+      "over": {
+        "type": "String"
+      }
+    }
+  },
+  "everyExpenseHasCategory": "Every expense has a category",
+  "withoutCategoryCount": "{count, plural, =1{1 without a category} other{{count} without a category}}",
+  "@withoutCategoryCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "viewArrow": "View ›",
+  "unknownStartHint": "Every expense starts in Unknown. Open it and move them into new categories, or tap + on a bucket and pick example SMS.",
+  "movedExpensesTo": "{count, plural, =1{Moved 1 expense to {name}.} other{Moved {count} expenses to {name}.}}",
+  "@movedExpensesTo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "movedTo": "Moved to {name}.",
+  "@movedTo": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "unknownHint": "Expenses no category picked up. Tap Assign to give one a category; others from the same shop or person move with it.",
+  "nothingLeftThisPeriod": "Nothing left here for this period.",
+  "assign": "Assign",
+  "assignTitle": "Assign \"{title}\"",
+  "@assignTitle": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "everyNamedExpenseGoes": "Every \"{title}\" expense will go to this category.",
+  "@everyNamedExpenseGoes": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "onlyThisExpenseMoves": "Only this one expense moves.",
+  "create": "Create",
+  "debtPayments": "Debt payments",
+  "regularPaymentsFromDebts": "Regular payments from the Debts tab",
+  "paidAboveRegular": "Paid above the regular payment",
+  "debtsTab": "Debts tab",
+  "addCategoryTo": "+ Add a category to {bucket}",
+  "@addCategoryTo": {
+    "placeholders": {
+      "bucket": {
+        "type": "String"
+      }
+    }
+  },
+  "editArrow": "Edit ›",
+  "shareOfSpending": "{pct}% of spending · {action}",
+  "@shareOfSpending": {
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      },
+      "action": {
+        "type": "String"
+      }
+    }
+  },
+  "noSmsPickedYet": "No SMS picked yet",
+  "anyBank": "Any bank",
+  "moneyIn": "money in",
+  "moneyOut": "money out",
+  "nameContains": "name contains",
+  "onlyAmount": "Only {amount}",
+  "@onlyAmount": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "anyAmountTapForOnly": "Any amount · tap for only {amount}",
+  "@anyAmountTapForOnly": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "deleteRule": "Delete rule",
+  "onePerShopHint": "One per shop or person is enough; the rest are found for you.",
+  "saved": "Saved",
+  "payCyclesSince": "Pay cycles since {date}",
+  "@payCyclesSince": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "previousYear": "Previous year",
+  "nextYear": "Next year",
+  "yearTotalMonths": "{year} total · {started} of 12 months",
+  "@yearTotalMonths": {
+    "placeholders": {
+      "year": {
+        "type": "int"
+      },
+      "started": {
+        "type": "int"
+      }
+    }
+  },
+  "spent": "Spent",
+  "savedLower": "saved",
+  "averageMonth": "Average month",
+  "biggestMonth": "Biggest month",
+  "fromDate": "From {date}",
+  "@fromDate": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "notStartedYet": "Not started yet",
+  "running": "Running",
+  "highest": "Highest",
+  "savedAmount": "saved {amount}",
+  "@savedAmount": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "overAmount": "over {amount}",
+  "@overAmount": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  }
+}

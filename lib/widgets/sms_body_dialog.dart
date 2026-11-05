@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../database/database.dart';
 import '../format.dart';
+import '../l10n/language.dart';
 import '../theme.dart';
 import 'transaction_row.dart';
 
@@ -22,7 +23,7 @@ Future<void> showSmsBody(
     builder: (context) => AlertDialog(
       backgroundColor: Colors.white,
       title: Text(
-        t.description.isEmpty ? 'Payment' : t.description,
+        t.description.isEmpty ? tr.payment : t.description,
         style: const TextStyle(
             fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.ink),
       ),
@@ -41,7 +42,7 @@ Future<void> showSmsBody(
             ),
             const SizedBox(height: 12),
             SelectableText(
-              body.isEmpty ? 'Added by hand, so there is no SMS.' : body,
+              body.isEmpty ? tr.addedByHandNoSms : body,
               // Arabic and English alerts both read correctly this way.
               textDirection: _isArabic(body) ? TextDirection.rtl : null,
               style: const TextStyle(
@@ -57,13 +58,13 @@ Future<void> showSmsBody(
               Navigator.pop(context);
               onChangeCategory();
             },
-            child: const Text('Change category',
+            child: Text(tr.changeCategory,
                 style: TextStyle(
                     fontWeight: FontWeight.w700, color: AppColors.green)),
           ),
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Close',
+          child: Text(tr.close,
               style: TextStyle(
                   fontWeight: FontWeight.w700, color: AppColors.green)),
         ),
