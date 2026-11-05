@@ -8,17 +8,20 @@ import '../database/database.dart';
 import '../format.dart';
 import '../main.dart';
 import '../services/category_matching.dart';
-import '../services/category_tree.dart';
+import '../services/income_plan.dart';
 import '../services/pay_cycle.dart';
 import '../services/view_period.dart';
 import '../theme.dart';
+import '../widgets/bucket_label.dart';
 import '../widgets/category_resolver_builder.dart';
 import '../widgets/sms_body_dialog.dart';
 import '../widgets/transaction_row.dart';
 import '../widgets/ui.dart';
 
-/// Categories tab: spending buckets filled automatically by rules picked from
-/// example SMS (like fixed debts), with this month's spend per category.
+/// Categories tab: the four plan buckets (Expenses, Extras, Emergency &
+/// Savings, Investments), each holding categories filled automatically by
+/// rules picked from example SMS, plus Unknown for spending no category
+/// claims yet.
 class CategoriesScreen extends StatefulWidget {
   const CategoriesScreen({super.key});
 
@@ -121,8 +124,8 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
   Category? _existing;
   final List<_DraftRule> _rules = [];
 
-  /// The top-level category this one goes under (null = top level).
-  int? _parentId;
+  /// The bucket the category sits in.
+  Bucket _bucket = Bucket.expenses;
 
   /// Transactions removed from this category (one at a time).
   final Set<int> _removed = {};
@@ -137,6 +140,8 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
   final _exclusionStream = db.watchCategoryExclusions();
   final _paymentStream = db.watchDebtPayments();
   final _txStream = db.watchTransactions();
+  final _debtStream = db.watchDebts();
+  final _planStream = watchIncomePlan(db);
 
   @override
   void dispose() {
@@ -147,16 +152,11 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
 
   int get _draftId => _existing?.id ?? _newCategoryId;
 
-  Future<void> _startAdd() async {
-    _reset();
-    setState(() => _editing = true);
-  }
-
-  /// Opens the editor for a new subcategory of [parent].
-  Future<void> _startAddSub(Category parent) async {
+  /// Opens the editor for a new category in [bucket].
+  Future<void> _startAdd([Bucket bucket = Bucket.expenses]) async {
     _reset();
     setState(() {
-      _parentId = parent.id;
+      _bucket = bucket;
       _editing = true;
     });
   }
@@ -168,7 +168,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     if (!mounted) return;
     setState(() {
       _existing = c;
-      _parentId = c.parentId;
+      _bucket = c.bucket;
       _periodOnly = true;
       _name.text = c.name;
       _rules.addAll(
@@ -182,7 +182,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
 
   void _reset() {
     _existing = null;
-    _parentId = null;
+    _bucket = Bucket.expenses;
     _name.clear();
     _shopName.clear();
     _rules.clear();
@@ -246,25 +246,10 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     }
     final int id;
     final existing = _existing;
-    // Only one level: a category with subcategories stays top level, and a
-    // parent must itself be top level.
-    var parentId = _parentId;
-    final all = await db.allCategories();
-    if (parentId != null) {
-      final parent = all.where((c) => c.id == parentId).firstOrNull;
-      final hasSubs = existing != null &&
-          all.any((c) => c.parentId == existing.id && c.id != existing.id);
-      if (parent == null ||
-          parent.parentId != null ||
-          parent.id == existing?.id ||
-          hasSubs) {
-        parentId = null;
-      }
-    }
     if (existing != null) {
       id = existing.id;
       await db.updateCategory(
-          existing.copyWith(name: name, parentId: Value(parentId)));
+          existing.copyWith(name: name, bucket: _bucket));
     } else {
       final count = (await db.allCategories()).length;
       final color =
@@ -272,7 +257,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       id = await db.addCategory(CategoriesCompanion.insert(
         name: name,
         color: Value(color),
-        parentId: Value(parentId),
+        bucket: Value(_bucket),
       ));
     }
 
@@ -408,13 +393,23 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
           builder: (context, ruleSnap) {
             return StreamBuilder<List<Transaction>>(
               stream: _txStream,
-              builder: (context, txSnap) {
+              builder: (context, txSnap) => StreamBuilder<List<Debt>>(
+                stream: _debtStream,
+                builder: (context, debtSnap) =>
+                    StreamBuilder<List<DebtPayment>>(
+                  stream: _paymentStream,
+                  builder: (context, paySnap) => StreamBuilder<IncomePlan?>(
+                    stream: _planStream,
+                    builder: (context, planSnap) {
                 final txns = txSnap.data ?? const [];
                 return _CategoriesList(
                   categories: categories,
                   rules: ruleSnap.data ?? const [],
                   resolver: resolver,
                   txns: txns,
+                  debts: debtSnap.data ?? const [],
+                  debtPayments: paySnap.data ?? const [],
+                  plan: planSnap.data,
                   kind: _kind,
                   offset: _offset,
                   onKind: (kind) => setState(() {
@@ -430,7 +425,10 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                   onAdd: _startAdd,
                   onEdit: _startEdit,
                 );
-              },
+                    },
+                  ),
+                ),
+              ),
             );
           },
         );
@@ -482,7 +480,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
           color: '#000000',
           senderIds: '[]',
           shopNames: '{}',
-          parentId: _parentId,
+          bucket: _bucket,
         ),
       ],
       rules: [
@@ -521,24 +519,11 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       }
     }
     const shown = 60;
-    final tree = CategoryTree(categories);
-    final existing = _existing;
-    final subs =
-        existing == null ? const <Category>[] : tree.childrenOf(existing.id);
-    final subSpent = <int, double>{};
-    for (final t in txns) {
-      if (t.isCredit || (period != null && !period.contains(t.date))) continue;
-      final id = resolver.categoryIdFor(t);
-      if (id != null) subSpent[id] = (subSpent[id] ?? 0) + t.amount;
-    }
-
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
       children: [
         _FlowHeader(
-          title: _existing == null
-              ? (_parentId == null ? 'New category' : 'New subcategory')
-              : (_parentId == null ? 'Edit category' : 'Edit subcategory'),
+          title: _existing == null ? 'New category' : 'Edit category',
           onBack: _cancel,
         ),
         const SizedBox(height: 18),
@@ -549,13 +534,10 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
           controller: _name,
           autofocus: _existing == null,
           textCapitalization: TextCapitalization.sentences,
-          decoration: _decoration(
-              _parentId == null ? 'e.g. Groceries' : 'e.g. Restaurants'),
+          decoration: _decoration('e.g. Groceries'),
           onChanged: (_) => setState(() {}),
         ),
-        ..._parentPicker(tree, hasSubs: subs.isNotEmpty),
-        if (existing != null && _parentId == null)
-          ..._subcategorySection(existing, subs, subSpent, period),
+        ..._bucketPicker(),
         const SizedBox(height: 20),
         const Text('Matching SMS',
             style: TextStyle(
@@ -635,8 +617,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
         const SizedBox(height: 4),
         Text(
           'Tap ✕ to take out just that one transaction. SMS counted as a debt '
-          'payment stay with the debt.'
-          '${subs.isEmpty ? '' : ' SMS filed in a subcategory are listed there.'}',
+          'payment stay with the debt.',
           style: const TextStyle(
               fontSize: 12, color: AppColors.muted, height: 1.4),
         ),
@@ -698,7 +679,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
         if (_existing != null) ...[
           const SizedBox(height: 10),
           TextButton(
-            onPressed: () => _confirmDeleteCategory(subs.length),
+            onPressed: _deleteCategory,
             child: const Text('Delete category',
                 style: TextStyle(color: AppColors.terracotta)),
           ),
@@ -707,22 +688,16 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     );
   }
 
-  /// "Put under" chips: top level, or one of the top-level categories.
-  List<Widget> _parentPicker(CategoryTree tree, {required bool hasSubs}) {
-    if (hasSubs) return const [];
-    final options = [
-      for (final r in tree.roots)
-        if (r.id != _existing?.id) r,
-    ];
-    if (options.isEmpty) return const [];
-    Widget chip(String label, int? id, Color? color) {
-      final selected = _parentId == id;
+  /// "Bucket" chips: which of the four plan buckets the category is in.
+  List<Widget> _bucketPicker() {
+    Widget chip(Bucket b) {
+      final selected = _bucket == b;
       return ChoiceChip(
-        label: Text(label),
-        avatar: color == null ? null : Dot(color, size: 8),
+        label: Text(b.label),
+        avatar: Dot(selected ? Colors.white : b.color, size: 8),
         selected: selected,
         showCheckmark: false,
-        onSelected: (_) => setState(() => _parentId = id),
+        onSelected: (_) => setState(() => _bucket = b),
         backgroundColor: Colors.white,
         selectedColor: AppColors.green,
         side: const BorderSide(color: Color(0x261E2E2A)),
@@ -736,139 +711,24 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
 
     return [
       const SizedBox(height: 16),
-      const Text('Put under',
+      const Text('Bucket',
           style: TextStyle(fontSize: 12.5, color: AppColors.muted)),
       const SizedBox(height: 8),
       Wrap(
         spacing: 8,
         runSpacing: 8,
-        children: [
-          chip('Top level', null, null),
-          for (final c in options) chip(c.name, c.id, hexColor(c.color)),
-        ],
+        children: [for (final b in Bucket.values) chip(b)],
       ),
+      const SizedBox(height: 6),
+      Text(_bucket.hint,
+          style: const TextStyle(fontSize: 11.5, color: AppColors.faint)),
     ];
   }
 
-  /// The subcategories of the top-level category being edited, with what
-  /// each spent in the period, and a button to add one.
-  List<Widget> _subcategorySection(
-    Category parent,
-    List<Category> subs,
-    Map<int, double> spent,
-    ViewPeriod? period,
-  ) {
-    return [
-      const SizedBox(height: 20),
-      const Text('Subcategories',
-          style: TextStyle(
-              fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.ink)),
-      const SizedBox(height: 4),
-      Text(
-        subs.isEmpty
-            ? 'Split ${parent.name} into smaller groups, e.g. Restaurants and '
-                'Groceries. Their spending still counts toward ${parent.name}.'
-            : 'Their spending counts toward ${parent.name}. Tap one to edit it '
-                '(unsaved changes here are dropped).',
-        style:
-            const TextStyle(fontSize: 12, color: AppColors.muted, height: 1.4),
-      ),
-      const SizedBox(height: 10),
-      if (subs.isNotEmpty) ...[
-        AppCard(
-          padding: EdgeInsets.zero,
-          child: Column(
-            children: [
-              for (var i = 0; i < subs.length; i++)
-                InkWell(
-                  onTap: () => _startEdit(subs[i]),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 13),
-                    decoration: BoxDecoration(
-                      border: i == subs.length - 1
-                          ? null
-                          : const Border(
-                              bottom: BorderSide(color: AppColors.cardBorder)),
-                    ),
-                    child: Row(
-                      children: [
-                        Dot(hexColor(subs[i].color), size: 8),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(subs[i].name,
-                              style: const TextStyle(
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.ink)),
-                        ),
-                        Text(money(spent[subs[i].id] ?? 0),
-                            style: const TextStyle(
-                                fontSize: 13, color: AppColors.muted)),
-                        const SizedBox(width: 6),
-                        const Icon(Icons.chevron_right,
-                            size: 18, color: AppColors.faint),
-                      ],
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-        if (period != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text('Spent in ${period.label}',
-                style: const TextStyle(fontSize: 11, color: AppColors.faint)),
-          ),
-        const SizedBox(height: 10),
-      ],
-      _OutlineAction(
-        icon: Icons.subdirectory_arrow_right,
-        label: 'Add subcategory',
-        onTap: () => _startAddSub(parent),
-      ),
-    ];
-  }
-
-  /// Deletes the category being edited, asking first when that also
-  /// deletes [subCount] subcategories.
-  Future<void> _confirmDeleteCategory(int subCount) async {
+  /// Deletes the category being edited; its expenses move to Unknown.
+  Future<void> _deleteCategory() async {
     final existing = _existing;
     if (existing == null) return;
-    if (subCount > 0) {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          backgroundColor: Colors.white,
-          title: Text('Delete ${existing.name}?',
-              style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.ink)),
-          content: Text(
-            'Its $subCount subcategor${subCount == 1 ? 'y is' : 'ies are'} '
-            'deleted too, and their expenses move to Unknown.',
-            style: const TextStyle(fontSize: 14, color: AppColors.ink),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel',
-                  style: TextStyle(color: AppColors.muted)),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Delete',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.terracotta)),
-            ),
-          ],
-        ),
-      );
-      if (ok != true || !mounted) return;
-    }
     await db.deleteCategory(existing.id);
     _cancel();
   }
@@ -898,6 +758,9 @@ class _CategoriesList extends StatelessWidget {
     required this.rules,
     required this.resolver,
     required this.txns,
+    required this.debts,
+    required this.debtPayments,
+    required this.plan,
     required this.kind,
     required this.offset,
     required this.onKind,
@@ -911,6 +774,9 @@ class _CategoriesList extends StatelessWidget {
   final List<CategoryRule> rules;
   final CategoryResolver resolver;
   final List<Transaction> txns;
+  final List<Debt> debts;
+  final List<DebtPayment> debtPayments;
+  final IncomePlan? plan;
   final PeriodKind kind;
   final int offset;
   final ValueChanged<PeriodKind> onKind;
@@ -918,7 +784,7 @@ class _CategoriesList extends StatelessWidget {
 
   /// Opens the Monthly view this many pay cycles back from the latest.
   final ValueChanged<int> onOpenMonth;
-  final VoidCallback onAdd;
+  final ValueChanged<Bucket> onAdd;
   final ValueChanged<Category> onEdit;
 
   @override
@@ -934,46 +800,44 @@ class _CategoriesList extends StatelessWidget {
     final period =
         viewPeriod(kind, offset, cycles: cycles, latestActivity: latest);
 
-    // Every expense this month lands in exactly one bucket: a category, the
-    // debts (confirmed debt payments), or Unknown (everything else).
-    final spent = <int, double>{};
-    final unknown = <Transaction>[];
-    var unknownTotal = 0.0;
-    var debtTotal = 0.0;
-    var income = 0.0;
-    for (final t in txns) {
-      if (!period.contains(t.date)) continue;
-      if (t.isCredit) {
-        income += t.amount;
-        continue;
-      }
-      final id = resolver.categoryIdFor(t);
-      if (id != null) {
-        spent[id] = (spent[id] ?? 0) + t.amount;
-      } else if (resolver.isDebtPayment(t)) {
-        debtTotal += t.amount;
-      } else {
-        unknown.add(t);
-        unknownTotal += t.amount;
-      }
-    }
-    final total = spent.values.fold<double>(0, (s, v) => s + v) +
-        unknownTotal +
-        debtTotal;
+    // Every expense lands in exactly one place: a category (and so its
+    // bucket), the debts (split into Expenses / Investments), or Unknown.
+    final spend = BucketSpend.of(
+      txns: txns,
+      inPeriod: period.contains,
+      resolver: resolver,
+      categories: categories,
+      debts: debts,
+      debtPayments: debtPayments,
+    );
+    final income = txns
+        .where((t) => t.isCredit && period.contains(t.date))
+        .fold(0.0, (s, t) => s + t.amount);
+    final unknown = spend.unknown;
+    final unknownTotal = spend.unknownTotal;
+    final total = spend.total;
     final remaining = income - total;
-    // [spent] is per matched category; subcategories roll up into their
-    // top-level category for the pie and the cards.
-    final tree = CategoryTree(categories);
-    final rootSpent = tree.rollUp(spent);
+
+    // On the monthly view, each bucket also shows its planned amount.
+    final plan = this.plan;
+    final report = plan == null || kind != PeriodKind.monthly
+        ? null
+        : buildCycleReport(
+            cycle: PayCycle(period.start, period.end),
+            cycles: cycles,
+            txns: txns,
+            resolver: resolver,
+            categories: categories,
+            debts: debts,
+            debtPayments: debtPayments,
+            plan: plan,
+          );
 
     final slices = <_PieSlice>[
-      for (final c in tree.roots)
-        if ((rootSpent[c.id] ?? 0) > 0)
-          _PieSlice(c.name, rootSpent[c.id]!, hexColor(c.color)),
+      for (final b in Bucket.values)
+        if (spend.totalIn(b) > 0) _PieSlice(b.label, spend.totalIn(b), b.color),
       if (unknownTotal > 0)
         _PieSlice(_unknownName, unknownTotal, _unknownColor),
-      if (debtTotal > 0)
-        _PieSlice('Debt payments', debtTotal, AppColors.peach),
       if (remaining > 0)
         _PieSlice('Remaining income', remaining, AppColors.mint),
     ];
@@ -989,7 +853,7 @@ class _CategoriesList extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                     color: AppColors.ink)),
             InkWell(
-              onTap: onAdd,
+              onTap: () => onAdd(Bucket.expenses),
               borderRadius: BorderRadius.circular(10),
               child: Container(
                 width: 32,
@@ -1076,24 +940,18 @@ class _CategoriesList extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 18),
-        for (final c in tree.roots) ...[
-          _CategoryCard(
-            category: c,
-            rules: [
-              for (final r in rules)
-                if (r.categoryId == c.id) r,
-            ],
-            spent: rootSpent[c.id] ?? 0,
-            sharePct: total <= 0 ? 0 : ((rootSpent[c.id] ?? 0) / total * 100),
-            onTap: () => onEdit(c),
-            subs: [
-              for (final sub in tree.childrenOf(c.id))
-                (sub, spent[sub.id] ?? 0),
-            ],
-            ownSpent: spent[c.id] ?? 0,
-            onTapSub: onEdit,
+        for (final b in Bucket.values) ...[
+          _BucketSection(
+            bucket: b,
+            categories: categoriesIn(b, categories),
+            rules: rules,
+            spend: spend,
+            totalSpent: total,
+            planned: report?.plannedFor(b),
+            onAdd: () => onAdd(b),
+            onEdit: onEdit,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 20),
         ],
         _CategoryCard(
           category: const Category(
@@ -1102,20 +960,21 @@ class _CategoriesList extends StatelessWidget {
             color: '#B7C0BA',
             senderIds: '[]',
             shopNames: '{}',
+            bucket: Bucket.expenses,
           ),
           rules: const [],
           spent: unknownTotal,
           sharePct: total <= 0 ? 0 : (unknownTotal / total * 100),
           subtitle: unknown.isEmpty
               ? 'Every expense has a category'
-              : '${unknown.length} expenses without a category',
+              : '${unknown.length} without a category',
           actionLabel: 'View ›',
           onTap: () => _showUnknown(context, unknown, periodLabel),
         ),
         if (categories.isEmpty)
           const EmptyHint(
-            'Every expense starts in Unknown. Open it and assign them to new '
-            'categories, or tap + and pick example SMS.',
+            'Every expense starts in Unknown. Open it and move them into new '
+            'categories, or tap + on a bucket and pick example SMS.',
           ),
       ],
     );
@@ -1312,48 +1171,23 @@ class _CategoryChoiceSheet extends StatelessWidget {
   final Transaction txn;
   final List<Category> categories;
 
-  /// Asks for a name, creates the category and pops the sheet with it.
+  /// Asks for a name and bucket, creates the category and pops the sheet
+  /// with it.
   Future<void> _createAndPick(BuildContext context) async {
-    final controller = TextEditingController();
-    final name = await showDialog<String>(
+    final result = await showDialog<(String, Bucket)>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        title: const Text('New category',
-            style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: AppColors.ink)),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.sentences,
-          decoration: const InputDecoration(hintText: 'e.g. Groceries'),
-          onSubmitted: (v) => Navigator.pop(context, v),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel',
-                style: TextStyle(color: AppColors.muted)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('Create',
-                style: TextStyle(
-                    fontWeight: FontWeight.w700, color: AppColors.green)),
-          ),
-        ],
-      ),
+      builder: (context) => const _NewCategoryDialog(),
     );
-    controller.dispose();
-    final trimmed = name?.trim() ?? '';
-    if (trimmed.isEmpty) return;
+    final trimmed = result?.$1.trim() ?? '';
+    if (result == null || trimmed.isEmpty) return;
     final count = (await db.allCategories()).length;
     final color =
         '#${AppColors.paletteAt(count).toARGB32().toRadixString(16).substring(2).toUpperCase()}';
-    final id = await db.addCategory(
-        CategoriesCompanion.insert(name: trimmed, color: Value(color)));
+    final id = await db.addCategory(CategoriesCompanion.insert(
+      name: trimmed,
+      color: Value(color),
+      bucket: Value(result.$2),
+    ));
     final created = await db.categoryById(id);
     if (created != null && context.mounted) Navigator.pop(context, created);
   }
@@ -1361,7 +1195,7 @@ class _CategoryChoiceSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final title = txn.description.isEmpty ? 'Payment' : txn.description;
-    final tree = CategoryTree(categories);
+    final ordered = categoriesByBucket(categories);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
       child: Column(
@@ -1408,22 +1242,23 @@ class _CategoryChoiceSheet extends StatelessWidget {
                       ),
                     ),
                   ),
-                  for (final c in tree.ordered)
+                  for (var i = 0; i < ordered.length; i++) ...[
+                    if (i == 0 || ordered[i - 1].bucket != ordered[i].bucket)
+                      BucketLabel(ordered[i].bucket),
                     InkWell(
-                      onTap: () => Navigator.pop(context, c),
+                      onTap: () => Navigator.pop(context, ordered[i]),
                       child: Container(
-                        padding: EdgeInsets.only(
-                            top: 14, bottom: 14, left: tree.isSub(c) ? 22 : 0),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
                         decoration: const BoxDecoration(
                           border: Border(
                               bottom: BorderSide(color: AppColors.cardBorder)),
                         ),
                         child: Row(
                           children: [
-                            Dot(hexColor(c.color), size: 9),
+                            Dot(hexColor(ordered[i].color), size: 9),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: Text(c.name,
+                              child: Text(ordered[i].name,
                                   style: const TextStyle(
                                       fontSize: 14.5,
                                       fontWeight: FontWeight.w600,
@@ -1433,6 +1268,7 @@ class _CategoryChoiceSheet extends StatelessWidget {
                         ),
                       ),
                     ),
+                  ],
                 ],
               ),
             ),
@@ -1442,11 +1278,282 @@ class _CategoryChoiceSheet extends StatelessWidget {
   }
 }
 
+/// Asks for a new category's name and bucket. Pops with (name, bucket).
+class _NewCategoryDialog extends StatefulWidget {
+  const _NewCategoryDialog();
+
+  @override
+  State<_NewCategoryDialog> createState() => _NewCategoryDialogState();
+}
+
+class _NewCategoryDialogState extends State<_NewCategoryDialog> {
+  final _name = TextEditingController();
+  Bucket _bucket = Bucket.expenses;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: Colors.white,
+      title: const Text('New category',
+          style: TextStyle(
+              fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.ink)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _name,
+            autofocus: true,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(hintText: 'e.g. Groceries'),
+          ),
+          const SizedBox(height: 14),
+          const Text('Bucket',
+              style: TextStyle(fontSize: 12.5, color: AppColors.muted)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final b in Bucket.values)
+                ChoiceChip(
+                  label: Text(b.label),
+                  selected: _bucket == b,
+                  showCheckmark: false,
+                  onSelected: (_) => setState(() => _bucket = b),
+                  backgroundColor: Colors.white,
+                  selectedColor: AppColors.green,
+                  side: const BorderSide(color: Color(0x261E2E2A)),
+                  labelStyle: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: _bucket == b ? Colors.white : AppColors.ink,
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child:
+              const Text('Cancel', style: TextStyle(color: AppColors.muted)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, (_name.text, _bucket)),
+          child: const Text('Create',
+              style: TextStyle(
+                  fontWeight: FontWeight.w700, color: AppColors.green)),
+        ),
+      ],
+    );
+  }
+}
+
 /// The built-in catch-all bucket: every expense that no category, and no
 /// debt, claims. It isn't stored; it's worked out each time.
 const _unknownName = 'Unknown';
 const _unknownCategoryId = -2;
+const _debtCategoryId = -3;
 const _unknownColor = AppColors.inactive;
+
+/// A bucket's heading: dot, name, and what it holds (of its plan).
+class _BucketHeading extends StatelessWidget {
+  const _BucketHeading({
+    required this.color,
+    required this.title,
+    required this.amount,
+    this.planned,
+    this.isSpending = true,
+    this.onAdd,
+  });
+
+  final Color color;
+  final String title;
+  final double amount;
+
+  /// Planned for this pay cycle; null when there is no plan to show.
+  final double? planned;
+  final bool isSpending;
+  final VoidCallback? onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    final planned = this.planned;
+    final over = planned != null && isSpending && amount > planned + 0.0005;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Dot(color, size: 10),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.ink)),
+            ),
+            if (onAdd != null) ...[
+              const SizedBox(width: 10),
+              InkWell(
+                onTap: onAdd,
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  width: 26,
+                  height: 26,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.add,
+                      size: 16, color: Color.lerp(color, AppColors.ink, 0.3)),
+                ),
+              ),
+            ],
+          ],
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 18, top: 2),
+          child: AmountText(
+            planned == null
+                ? money(amount)
+                : '${amountText(amount)} of ${money(planned)}',
+            style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: over ? AppColors.terracotta : AppColors.muted),
+          ),
+        ),
+        if (planned != null && planned > 0) ...[
+          const SizedBox(height: 8),
+          ProgressBar(
+            fraction: amount / planned,
+            color: over ? AppColors.terracotta : color,
+            height: 4,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// One bucket on the list: its heading, its categories, and the debt
+/// payments it counts.
+class _BucketSection extends StatelessWidget {
+  const _BucketSection({
+    required this.bucket,
+    required this.categories,
+    required this.rules,
+    required this.spend,
+    required this.totalSpent,
+    required this.planned,
+    required this.onAdd,
+    required this.onEdit,
+  });
+
+  final Bucket bucket;
+  final List<Category> categories;
+  final List<CategoryRule> rules;
+  final BucketSpend spend;
+  final double totalSpent;
+  final double? planned;
+  final VoidCallback onAdd;
+  final ValueChanged<Category> onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final debt = spend.debtIn(bucket);
+    double share(double v) => totalSpent <= 0 ? 0 : v / totalSpent * 100;
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+          14, 14, 14, categories.isEmpty && debt <= 0.0005 ? 14 : 4),
+      decoration: BoxDecoration(
+        color: bucket.color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: bucket.color.withValues(alpha: 0.28)),
+      ),
+      child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _BucketHeading(
+          color: bucket.color,
+          title: bucket.label,
+          amount: spend.totalIn(bucket),
+          planned: planned,
+          isSpending: bucket.isSpending,
+          onAdd: onAdd,
+        ),
+        const SizedBox(height: 10),
+        for (final c in categories) ...[
+          _CategoryCard(
+            category: c,
+            rules: [
+              for (final r in rules)
+                if (r.categoryId == c.id) r,
+            ],
+            spent: spend.spentIn(c.id),
+            sharePct: share(spend.spentIn(c.id)),
+            onTap: () => onEdit(c),
+          ),
+          const SizedBox(height: 10),
+        ],
+        if (debt > 0.0005) ...[
+          _CategoryCard(
+            category: const Category(
+              id: _debtCategoryId,
+              name: 'Debt payments',
+              color: '#EFA98A',
+              senderIds: '[]',
+              shopNames: '{}',
+              bucket: Bucket.expenses,
+            ),
+            rules: const [],
+            spent: debt,
+            sharePct: share(debt),
+            subtitle: bucket == Bucket.expenses
+                ? 'Regular payments from the Debts tab'
+                : 'Paid above the regular payment',
+            actionLabel: 'Debts tab',
+            onTap: () {},
+          ),
+          const SizedBox(height: 10),
+        ],
+        if (categories.isEmpty && debt <= 0.0005)
+          InkWell(
+            onTap: onAdd,
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0x261E2E2A)),
+              ),
+              child: Text('+ Add a category to ${bucket.label}',
+                  style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.muted)),
+            ),
+          ),
+      ],
+      ),
+    );
+  }
+}
 
 class _PieSlice {
   const _PieSlice(this.label, this.value, this.color);
@@ -1562,23 +1669,12 @@ class _CategoryCard extends StatelessWidget {
     required this.onTap,
     this.subtitle,
     this.actionLabel = 'Edit ›',
-    this.subs = const [],
-    this.ownSpent = 0,
-    this.onTapSub,
   });
 
   final Category category;
   final List<CategoryRule> rules;
 
-  /// Total, including every subcategory.
   final double spent;
-
-  /// Subcategories with what each spent; listed under the bar.
-  final List<(Category, double)> subs;
-
-  /// What was filed in [category] itself, outside any subcategory.
-  final double ownSpent;
-  final ValueChanged<Category>? onTapSub;
 
   /// This category's share of all spending this month, 0–100. The bar shows it.
   final double sharePct;
@@ -1601,16 +1697,23 @@ class _CategoryCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Dot(color),
-                  const SizedBox(width: 10),
-                  Text(category.name,
-                      style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.ink)),
-                ],
+              Flexible(
+                child: Row(
+                  children: [
+                    Dot(color),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Text(category.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.ink)),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                ),
               ),
               SerifAmount(money(spent), size: 17),
             ],
@@ -1634,66 +1737,7 @@ class _CategoryCard extends StatelessWidget {
                       const TextStyle(fontSize: 12, color: AppColors.faint)),
             ],
           ),
-          if (subs.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            const Divider(height: 1, color: AppColors.cardBorder),
-            const SizedBox(height: 4),
-            for (final (sub, value) in subs)
-              _subRow(
-                color: hexColor(sub.color),
-                name: sub.name,
-                value: value,
-                onTap: onTapSub == null ? null : () => onTapSub!(sub),
-              ),
-            if (ownSpent > 0)
-              _subRow(
-                color: color.withValues(alpha: 0.35),
-                name: 'Other ${category.name}',
-                value: ownSpent,
-              ),
-          ],
         ],
-      ),
-    );
-  }
-
-  /// One subcategory line: name, share of this category, amount.
-  Widget _subRow({
-    required Color color,
-    required String name,
-    required double value,
-    VoidCallback? onTap,
-  }) {
-    final pct = spent <= 0 ? 0 : (value / spent * 100).round();
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(
-          children: [
-            const SizedBox(width: 4),
-            const Icon(Icons.subdirectory_arrow_right,
-                size: 14, color: AppColors.faint),
-            const SizedBox(width: 6),
-            Dot(color, size: 7),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 13, color: AppColors.ink)),
-            ),
-            Text('$pct%',
-                style: const TextStyle(fontSize: 11.5, color: AppColors.faint)),
-            const SizedBox(width: 10),
-            Text(money(value),
-                style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.ink)),
-          ],
-        ),
       ),
     );
   }
@@ -2203,12 +2247,10 @@ class _CategorySmsPickerState extends State<_CategorySmsPicker> {
 
 /// Where one stretch of time's money went: every expense lands in exactly one
 /// bucket (a category, debt payments, or Unknown), as on the monthly view.
-/// Subcategory spending is counted in its top-level category.
 class _Breakdown {
   _Breakdown(
     Iterable<Transaction> txns,
     CategoryResolver resolver,
-    CategoryTree tree,
   ) {
     for (final t in txns) {
       count++;
@@ -2216,9 +2258,8 @@ class _Breakdown {
         income += t.amount;
         continue;
       }
-      final leaf = resolver.categoryIdFor(t);
-      if (leaf != null) {
-        final id = tree.rootIdOf(leaf);
+      final id = resolver.categoryIdFor(t);
+      if (id != null) {
         spent[id] = (spent[id] ?? 0) + t.amount;
       } else if (resolver.isDebtPayment(t)) {
         debt += t.amount;
@@ -2289,8 +2330,7 @@ class _YearlyView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tree = CategoryTree(categories);
-    final roots = tree.roots;
+    final roots = categoriesByBucket(categories);
     final now = cycles.now;
     final top = latest != null && latest!.isAfter(now) ? latest! : now;
     final latestCycle = cycles.cycleFor(top);
@@ -2300,7 +2340,7 @@ class _YearlyView extends StatelessWidget {
     final months = <_MonthBox>[];
     for (var m = 1; m <= 12; m++) {
       final cycle = cycles.cycleFor(DateTime(year, m, 28));
-      final b = _Breakdown(txns.where((t) => cycle.contains(t.date)), resolver, tree);
+      final b = _Breakdown(txns.where((t) => cycle.contains(t.date)), resolver);
       final notStarted = cycle.start.isAfter(top);
       months.add(_MonthBox(
         name: _monthNames[m - 1],
@@ -2318,7 +2358,6 @@ class _YearlyView extends StatelessWidget {
     final yearly = _Breakdown(
       txns.where((t) => !t.date.isBefore(yearStart) && t.date.isBefore(yearEnd)),
       resolver,
-      tree,
     );
     _MonthBox? biggest;
     for (final m in started) {

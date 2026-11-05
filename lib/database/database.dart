@@ -12,6 +12,15 @@ part 'database.g.dart';
 /// one-off entries the user typed; those three are empty/null for them.
 enum TxSource { sms, manual }
 
+/// The four parts every salary is planned into. Stored by index, so only
+/// ever append new values.
+///
+/// [expenses] are needs (rent, groceries, fuel, fixed debt payments),
+/// [extras] are wants (restaurants, shopping), [savings] is the emergency
+/// fund and other savings ("Emergency & Savings"), [investments] is
+/// long-term growth (including paying debt off faster than required).
+enum Bucket { expenses, extras, savings, investments }
+
 /// A money movement — either auto-imported from a bank SMS or entered by hand.
 ///
 /// [isCredit] is the direction: true = money in, false = money out. [amount]
@@ -48,10 +57,9 @@ class Transactions extends Table {
 /// [CategoryExclusions], plus transactions filed into it by hand
 /// ([Transactions.categoryId]).
 ///
-/// A category with a [parentId] is a *subcategory* of that (top-level)
-/// category, e.g. "Restaurants" under "Food". It has its own rules,
-/// removals and by-hand filings exactly like a top-level category; its
-/// spending also counts toward the parent's total. Only one level deep.
+/// Every category sits in exactly one [Bucket] of the income plan
+/// (Expenses, Extras, Emergency & Savings, Investments). There are no
+/// subcategories: the bucket is the level above a category.
 ///
 /// [senderIds] / [shopNames] are the pre-v6 rule format (a JSON sender list
 /// and a senderId -> comma-separated shop-fragment map). They are only read
@@ -63,8 +71,9 @@ class Categories extends Table {
   TextColumn get senderIds => text().withDefault(const Constant('[]'))();
   TextColumn get shopNames => text().withDefault(const Constant('{}'))();
 
-  /// The top-level category this one sits under (null = top level).
-  IntColumn get parentId => integer().nullable()();
+  /// The income-plan bucket this category's spending counts toward.
+  IntColumn get bucket =>
+      intEnum<Bucket>().withDefault(const Constant(0))();
 }
 
 /// One auto-matching rule of a category, usually copied from an SMS the user
@@ -188,7 +197,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -224,11 +233,38 @@ class AppDatabase extends _$AppDatabase {
             await _migrateShopNames();
           }
           if (from < 7) {
-            // v7: subcategories.
-            await m.addColumn(categories, categories.parentId);
+            // v7: subcategories (removed again in v9).
+            await _addColumnIfMissing('categories', 'parent_id', 'INTEGER');
+          }
+          if (from < 8) {
+            // v8: income plan buckets on categories (nullable at first).
+            await _addColumnIfMissing('categories', 'bucket', 'INTEGER');
+          }
+          if (from < 9) {
+            // v9: no more subcategories, and every category has a bucket.
+            // A subcategory becomes a normal category; one without its own
+            // bucket takes its parent's, else Expenses.
+            await customStatement('''
+              UPDATE categories SET bucket = COALESCE(
+                bucket,
+                (SELECT p.bucket FROM categories p
+                 WHERE p.id = categories.parent_id),
+                0)
+            ''');
+            // Rebuild the table: drops parent_id, makes bucket required.
+            await m.alterTable(TableMigration(categories));
           }
         },
       );
+
+  /// Adds a raw column unless it is already there (a table created by an
+  /// older step may already carry today's columns).
+  Future<void> _addColumnIfMissing(
+      String table, String column, String type) async {
+    final cols = await customSelect('PRAGMA table_info($table)').get();
+    if (cols.any((c) => c.read<String>('name') == column)) return;
+    await customStatement('ALTER TABLE $table ADD COLUMN $column $type');
+  }
 
   Future<void> _migrateShopNames() async {
     for (final c in await select(categories).get()) {
@@ -346,18 +382,8 @@ class AppDatabase extends _$AppDatabase {
   Future<Category?> categoryById(int id) =>
       (select(categories)..where((c) => c.id.equals(id))).getSingleOrNull();
 
-  /// Deletes category [id] together with its subcategories. Their
-  /// transactions go back to Unknown.
-  Future<void> deleteCategory(int id) async {
-    final subs = await (select(categories)..where((c) => c.parentId.equals(id)))
-        .get();
-    for (final s in subs) {
-      await _deleteOneCategory(s.id);
-    }
-    await _deleteOneCategory(id);
-  }
-
-  Future<int> _deleteOneCategory(int id) async {
+  /// Deletes category [id]. Its transactions go back to Unknown.
+  Future<int> deleteCategory(int id) async {
     // Un-file any transactions manually assigned to this category first.
     await (update(transactions)..where((t) => t.categoryId.equals(id)))
         .write(const TransactionsCompanion(categoryId: Value(null)));
@@ -500,6 +526,22 @@ class AppDatabase extends _$AppDatabase {
 
   Future<int> deleteDebtPayment(int id) =>
       (delete(debtPayments)..where((p) => p.id.equals(id))).go();
+
+  // ---- Generic settings --------------------------------------------------
+  Stream<String?> watchSetting(String key) =>
+      (select(settings)..where((s) => s.key.equals(key)))
+          .watchSingleOrNull()
+          .map((row) => row?.value);
+
+  Future<String?> getSetting(String key) async =>
+      (await (select(settings)..where((s) => s.key.equals(key)))
+              .getSingleOrNull())
+          ?.value;
+
+  Future<void> setSetting(String key, String value) =>
+      into(settings).insertOnConflictUpdate(
+        SettingsCompanion.insert(key: key, value: value),
+      );
 
   // ---- SMS settings ------------------------------------------------------
   Stream<bool> watchSmsImportEnabled() {
