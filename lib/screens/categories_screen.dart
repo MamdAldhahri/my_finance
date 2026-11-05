@@ -8,6 +8,7 @@ import '../database/database.dart';
 import '../format.dart';
 import '../main.dart';
 import '../services/category_matching.dart';
+import '../services/category_tree.dart';
 import '../services/pay_cycle.dart';
 import '../services/view_period.dart';
 import '../theme.dart';
@@ -120,6 +121,9 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
   Category? _existing;
   final List<_DraftRule> _rules = [];
 
+  /// The top-level category this one goes under (null = top level).
+  int? _parentId;
+
   /// Transactions removed from this category (one at a time).
   final Set<int> _removed = {};
 
@@ -148,6 +152,15 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     setState(() => _editing = true);
   }
 
+  /// Opens the editor for a new subcategory of [parent].
+  Future<void> _startAddSub(Category parent) async {
+    _reset();
+    setState(() {
+      _parentId = parent.id;
+      _editing = true;
+    });
+  }
+
   Future<void> _startEdit(Category c) async {
     _reset();
     final rules = await db.allCategoryRules();
@@ -155,6 +168,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     if (!mounted) return;
     setState(() {
       _existing = c;
+      _parentId = c.parentId;
       _periodOnly = true;
       _name.text = c.name;
       _rules.addAll(
@@ -168,6 +182,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
 
   void _reset() {
     _existing = null;
+    _parentId = null;
     _name.clear();
     _shopName.clear();
     _rules.clear();
@@ -231,9 +246,25 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     }
     final int id;
     final existing = _existing;
+    // Only one level: a category with subcategories stays top level, and a
+    // parent must itself be top level.
+    var parentId = _parentId;
+    final all = await db.allCategories();
+    if (parentId != null) {
+      final parent = all.where((c) => c.id == parentId).firstOrNull;
+      final hasSubs = existing != null &&
+          all.any((c) => c.parentId == existing.id && c.id != existing.id);
+      if (parent == null ||
+          parent.parentId != null ||
+          parent.id == existing?.id ||
+          hasSubs) {
+        parentId = null;
+      }
+    }
     if (existing != null) {
       id = existing.id;
-      await db.updateCategory(existing.copyWith(name: name));
+      await db.updateCategory(
+          existing.copyWith(name: name, parentId: Value(parentId)));
     } else {
       final count = (await db.allCategories()).length;
       final color =
@@ -241,6 +272,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       id = await db.addCategory(CategoriesCompanion.insert(
         name: name,
         color: Value(color),
+        parentId: Value(parentId),
       ));
     }
 
@@ -450,6 +482,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
           color: '#000000',
           senderIds: '[]',
           shopNames: '{}',
+          parentId: _parentId,
         ),
       ],
       rules: [
@@ -488,12 +521,24 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       }
     }
     const shown = 60;
+    final tree = CategoryTree(categories);
+    final existing = _existing;
+    final subs =
+        existing == null ? const <Category>[] : tree.childrenOf(existing.id);
+    final subSpent = <int, double>{};
+    for (final t in txns) {
+      if (t.isCredit || (period != null && !period.contains(t.date))) continue;
+      final id = resolver.categoryIdFor(t);
+      if (id != null) subSpent[id] = (subSpent[id] ?? 0) + t.amount;
+    }
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
       children: [
         _FlowHeader(
-          title: _existing == null ? 'New category' : 'Edit category',
+          title: _existing == null
+              ? (_parentId == null ? 'New category' : 'New subcategory')
+              : (_parentId == null ? 'Edit category' : 'Edit subcategory'),
           onBack: _cancel,
         ),
         const SizedBox(height: 18),
@@ -504,9 +549,13 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
           controller: _name,
           autofocus: _existing == null,
           textCapitalization: TextCapitalization.sentences,
-          decoration: _decoration('e.g. Groceries'),
+          decoration: _decoration(
+              _parentId == null ? 'e.g. Groceries' : 'e.g. Restaurants'),
           onChanged: (_) => setState(() {}),
         ),
+        ..._parentPicker(tree, hasSubs: subs.isNotEmpty),
+        if (existing != null && _parentId == null)
+          ..._subcategorySection(existing, subs, subSpent, period),
         const SizedBox(height: 20),
         const Text('Matching SMS',
             style: TextStyle(
@@ -584,10 +633,12 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
           ],
         ),
         const SizedBox(height: 4),
-        const Text(
+        Text(
           'Tap ✕ to take out just that one transaction. SMS counted as a debt '
-          'payment stay with the debt.',
-          style: TextStyle(fontSize: 12, color: AppColors.muted, height: 1.4),
+          'payment stay with the debt.'
+          '${subs.isEmpty ? '' : ' SMS filed in a subcategory are listed there.'}',
+          style: const TextStyle(
+              fontSize: 12, color: AppColors.muted, height: 1.4),
         ),
         const SizedBox(height: 10),
         if (matched.isEmpty)
@@ -647,16 +698,179 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
         if (_existing != null) ...[
           const SizedBox(height: 10),
           TextButton(
-            onPressed: () async {
-              await db.deleteCategory(_existing!.id);
-              _cancel();
-            },
+            onPressed: () => _confirmDeleteCategory(subs.length),
             child: const Text('Delete category',
                 style: TextStyle(color: AppColors.terracotta)),
           ),
         ],
       ],
     );
+  }
+
+  /// "Put under" chips: top level, or one of the top-level categories.
+  List<Widget> _parentPicker(CategoryTree tree, {required bool hasSubs}) {
+    if (hasSubs) return const [];
+    final options = [
+      for (final r in tree.roots)
+        if (r.id != _existing?.id) r,
+    ];
+    if (options.isEmpty) return const [];
+    Widget chip(String label, int? id, Color? color) {
+      final selected = _parentId == id;
+      return ChoiceChip(
+        label: Text(label),
+        avatar: color == null ? null : Dot(color, size: 8),
+        selected: selected,
+        showCheckmark: false,
+        onSelected: (_) => setState(() => _parentId = id),
+        backgroundColor: Colors.white,
+        selectedColor: AppColors.green,
+        side: const BorderSide(color: Color(0x261E2E2A)),
+        labelStyle: TextStyle(
+          fontSize: 12.5,
+          fontWeight: FontWeight.w600,
+          color: selected ? Colors.white : AppColors.ink,
+        ),
+      );
+    }
+
+    return [
+      const SizedBox(height: 16),
+      const Text('Put under',
+          style: TextStyle(fontSize: 12.5, color: AppColors.muted)),
+      const SizedBox(height: 8),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          chip('Top level', null, null),
+          for (final c in options) chip(c.name, c.id, hexColor(c.color)),
+        ],
+      ),
+    ];
+  }
+
+  /// The subcategories of the top-level category being edited, with what
+  /// each spent in the period, and a button to add one.
+  List<Widget> _subcategorySection(
+    Category parent,
+    List<Category> subs,
+    Map<int, double> spent,
+    ViewPeriod? period,
+  ) {
+    return [
+      const SizedBox(height: 20),
+      const Text('Subcategories',
+          style: TextStyle(
+              fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.ink)),
+      const SizedBox(height: 4),
+      Text(
+        subs.isEmpty
+            ? 'Split ${parent.name} into smaller groups, e.g. Restaurants and '
+                'Groceries. Their spending still counts toward ${parent.name}.'
+            : 'Their spending counts toward ${parent.name}. Tap one to edit it '
+                '(unsaved changes here are dropped).',
+        style:
+            const TextStyle(fontSize: 12, color: AppColors.muted, height: 1.4),
+      ),
+      const SizedBox(height: 10),
+      if (subs.isNotEmpty) ...[
+        AppCard(
+          padding: EdgeInsets.zero,
+          child: Column(
+            children: [
+              for (var i = 0; i < subs.length; i++)
+                InkWell(
+                  onTap: () => _startEdit(subs[i]),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 13),
+                    decoration: BoxDecoration(
+                      border: i == subs.length - 1
+                          ? null
+                          : const Border(
+                              bottom: BorderSide(color: AppColors.cardBorder)),
+                    ),
+                    child: Row(
+                      children: [
+                        Dot(hexColor(subs[i].color), size: 8),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(subs[i].name,
+                              style: const TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.ink)),
+                        ),
+                        Text(money(spent[subs[i].id] ?? 0),
+                            style: const TextStyle(
+                                fontSize: 13, color: AppColors.muted)),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.chevron_right,
+                            size: 18, color: AppColors.faint),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        if (period != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text('Spent in ${period.label}',
+                style: const TextStyle(fontSize: 11, color: AppColors.faint)),
+          ),
+        const SizedBox(height: 10),
+      ],
+      _OutlineAction(
+        icon: Icons.subdirectory_arrow_right,
+        label: 'Add subcategory',
+        onTap: () => _startAddSub(parent),
+      ),
+    ];
+  }
+
+  /// Deletes the category being edited, asking first when that also
+  /// deletes [subCount] subcategories.
+  Future<void> _confirmDeleteCategory(int subCount) async {
+    final existing = _existing;
+    if (existing == null) return;
+    if (subCount > 0) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: Colors.white,
+          title: Text('Delete ${existing.name}?',
+              style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.ink)),
+          content: Text(
+            'Its $subCount subcategor${subCount == 1 ? 'y is' : 'ies are'} '
+            'deleted too, and their expenses move to Unknown.',
+            style: const TextStyle(fontSize: 14, color: AppColors.ink),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel',
+                  style: TextStyle(color: AppColors.muted)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.terracotta)),
+            ),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
+    }
+    await db.deleteCategory(existing.id);
+    _cancel();
   }
 
   InputDecoration _decoration(String hint) => InputDecoration(
@@ -747,11 +961,15 @@ class _CategoriesList extends StatelessWidget {
         unknownTotal +
         debtTotal;
     final remaining = income - total;
+    // [spent] is per matched category; subcategories roll up into their
+    // top-level category for the pie and the cards.
+    final tree = CategoryTree(categories);
+    final rootSpent = tree.rollUp(spent);
 
     final slices = <_PieSlice>[
-      for (final c in categories)
-        if ((spent[c.id] ?? 0) > 0)
-          _PieSlice(c.name, spent[c.id]!, hexColor(c.color)),
+      for (final c in tree.roots)
+        if ((rootSpent[c.id] ?? 0) > 0)
+          _PieSlice(c.name, rootSpent[c.id]!, hexColor(c.color)),
       if (unknownTotal > 0)
         _PieSlice(_unknownName, unknownTotal, _unknownColor),
       if (debtTotal > 0)
@@ -858,16 +1076,22 @@ class _CategoriesList extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 18),
-        for (final c in categories) ...[
+        for (final c in tree.roots) ...[
           _CategoryCard(
             category: c,
             rules: [
               for (final r in rules)
                 if (r.categoryId == c.id) r,
             ],
-            spent: spent[c.id] ?? 0,
-            sharePct: total <= 0 ? 0 : ((spent[c.id] ?? 0) / total * 100),
+            spent: rootSpent[c.id] ?? 0,
+            sharePct: total <= 0 ? 0 : ((rootSpent[c.id] ?? 0) / total * 100),
             onTap: () => onEdit(c),
+            subs: [
+              for (final sub in tree.childrenOf(c.id))
+                (sub, spent[sub.id] ?? 0),
+            ],
+            ownSpent: spent[c.id] ?? 0,
+            onTapSub: onEdit,
           ),
           const SizedBox(height: 12),
         ],
@@ -1137,6 +1361,7 @@ class _CategoryChoiceSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final title = txn.description.isEmpty ? 'Payment' : txn.description;
+    final tree = CategoryTree(categories);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
       child: Column(
@@ -1183,11 +1408,12 @@ class _CategoryChoiceSheet extends StatelessWidget {
                       ),
                     ),
                   ),
-                  for (final c in categories)
+                  for (final c in tree.ordered)
                     InkWell(
                       onTap: () => Navigator.pop(context, c),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        padding: EdgeInsets.only(
+                            top: 14, bottom: 14, left: tree.isSub(c) ? 22 : 0),
                         decoration: const BoxDecoration(
                           border: Border(
                               bottom: BorderSide(color: AppColors.cardBorder)),
@@ -1336,11 +1562,23 @@ class _CategoryCard extends StatelessWidget {
     required this.onTap,
     this.subtitle,
     this.actionLabel = 'Edit ›',
+    this.subs = const [],
+    this.ownSpent = 0,
+    this.onTapSub,
   });
 
   final Category category;
   final List<CategoryRule> rules;
+
+  /// Total, including every subcategory.
   final double spent;
+
+  /// Subcategories with what each spent; listed under the bar.
+  final List<(Category, double)> subs;
+
+  /// What was filed in [category] itself, outside any subcategory.
+  final double ownSpent;
+  final ValueChanged<Category>? onTapSub;
 
   /// This category's share of all spending this month, 0–100. The bar shows it.
   final double sharePct;
@@ -1396,7 +1634,66 @@ class _CategoryCard extends StatelessWidget {
                       const TextStyle(fontSize: 12, color: AppColors.faint)),
             ],
           ),
+          if (subs.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            const Divider(height: 1, color: AppColors.cardBorder),
+            const SizedBox(height: 4),
+            for (final (sub, value) in subs)
+              _subRow(
+                color: hexColor(sub.color),
+                name: sub.name,
+                value: value,
+                onTap: onTapSub == null ? null : () => onTapSub!(sub),
+              ),
+            if (ownSpent > 0)
+              _subRow(
+                color: color.withValues(alpha: 0.35),
+                name: 'Other ${category.name}',
+                value: ownSpent,
+              ),
+          ],
         ],
+      ),
+    );
+  }
+
+  /// One subcategory line: name, share of this category, amount.
+  Widget _subRow({
+    required Color color,
+    required String name,
+    required double value,
+    VoidCallback? onTap,
+  }) {
+    final pct = spent <= 0 ? 0 : (value / spent * 100).round();
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            const SizedBox(width: 4),
+            const Icon(Icons.subdirectory_arrow_right,
+                size: 14, color: AppColors.faint),
+            const SizedBox(width: 6),
+            Dot(color, size: 7),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, color: AppColors.ink)),
+            ),
+            Text('$pct%',
+                style: const TextStyle(fontSize: 11.5, color: AppColors.faint)),
+            const SizedBox(width: 10),
+            Text(money(value),
+                style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.ink)),
+          ],
+        ),
       ),
     );
   }
@@ -1906,16 +2203,22 @@ class _CategorySmsPickerState extends State<_CategorySmsPicker> {
 
 /// Where one stretch of time's money went: every expense lands in exactly one
 /// bucket (a category, debt payments, or Unknown), as on the monthly view.
+/// Subcategory spending is counted in its top-level category.
 class _Breakdown {
-  _Breakdown(Iterable<Transaction> txns, CategoryResolver resolver) {
+  _Breakdown(
+    Iterable<Transaction> txns,
+    CategoryResolver resolver,
+    CategoryTree tree,
+  ) {
     for (final t in txns) {
       count++;
       if (t.isCredit) {
         income += t.amount;
         continue;
       }
-      final id = resolver.categoryIdFor(t);
-      if (id != null) {
+      final leaf = resolver.categoryIdFor(t);
+      if (leaf != null) {
+        final id = tree.rootIdOf(leaf);
         spent[id] = (spent[id] ?? 0) + t.amount;
       } else if (resolver.isDebtPayment(t)) {
         debt += t.amount;
@@ -1986,6 +2289,8 @@ class _YearlyView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tree = CategoryTree(categories);
+    final roots = tree.roots;
     final now = cycles.now;
     final top = latest != null && latest!.isAfter(now) ? latest! : now;
     final latestCycle = cycles.cycleFor(top);
@@ -1995,7 +2300,7 @@ class _YearlyView extends StatelessWidget {
     final months = <_MonthBox>[];
     for (var m = 1; m <= 12; m++) {
       final cycle = cycles.cycleFor(DateTime(year, m, 28));
-      final b = _Breakdown(txns.where((t) => cycle.contains(t.date)), resolver);
+      final b = _Breakdown(txns.where((t) => cycle.contains(t.date)), resolver, tree);
       final notStarted = cycle.start.isAfter(top);
       months.add(_MonthBox(
         name: _monthNames[m - 1],
@@ -2013,6 +2318,7 @@ class _YearlyView extends StatelessWidget {
     final yearly = _Breakdown(
       txns.where((t) => !t.date.isBefore(yearStart) && t.date.isBefore(yearEnd)),
       resolver,
+      tree,
     );
     _MonthBox? biggest;
     for (final m in started) {
@@ -2024,11 +2330,11 @@ class _YearlyView extends StatelessWidget {
     final avg = started.isEmpty ? 0.0 : yearly.total / started.length;
     final savedPct =
         yearly.income <= 0 ? 0 : (yearly.saved / yearly.income * 100).round();
-    final yearSlices = yearly.slices(categories);
+    final yearSlices = yearly.slices(roots);
     final rangeLabel = 'Pay cycles since ${DateFormat('d MMM').format(yearStart)}';
 
     final legend = <_PieSlice>[
-      for (final c in categories)
+      for (final c in roots)
         if ((yearly.spent[c.id] ?? 0) > 0)
           _PieSlice(c.name, 0, hexColor(c.color)),
       if (yearly.unknownTotal > 0) const _PieSlice(_unknownName, 0, _unknownColor),
@@ -2044,9 +2350,9 @@ class _YearlyView extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(child: _monthTile(months[i], biggest, categories)),
+              Expanded(child: _monthTile(months[i], biggest, roots)),
               const SizedBox(width: 10),
-              Expanded(child: _monthTile(months[i + 1], biggest, categories)),
+              Expanded(child: _monthTile(months[i + 1], biggest, roots)),
             ],
           ),
         ),
@@ -2156,7 +2462,7 @@ class _YearlyView extends StatelessWidget {
               const SizedBox(height: 14),
               const Divider(color: Colors.white12, height: 1),
               const SizedBox(height: 6),
-              for (final c in categories)
+              for (final c in roots)
                 if ((yearly.spent[c.id] ?? 0) > 0)
                   _yearRow(
                     color: hexColor(c.color),

@@ -4,6 +4,7 @@ import '../database/database.dart';
 import '../format.dart';
 import '../main.dart';
 import '../services/category_matching.dart';
+import '../services/category_tree.dart';
 import '../services/debt_matching.dart';
 import '../services/derive.dart';
 import '../theme.dart';
@@ -173,10 +174,9 @@ class _Body extends StatelessWidget {
   Category? _categoryOf(Transaction t) {
     final id = resolver.categoryIdFor(t);
     if (id == null) return null;
-    for (final c in categories) {
-      if (c.id == id) return c;
-    }
-    return null;
+    final tree = CategoryTree(categories);
+    final c = tree.byId[id];
+    return c == null ? null : tree.withPathName(c);
   }
 }
 

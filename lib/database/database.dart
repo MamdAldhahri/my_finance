@@ -48,6 +48,11 @@ class Transactions extends Table {
 /// [CategoryExclusions], plus transactions filed into it by hand
 /// ([Transactions.categoryId]).
 ///
+/// A category with a [parentId] is a *subcategory* of that (top-level)
+/// category, e.g. "Restaurants" under "Food". It has its own rules,
+/// removals and by-hand filings exactly like a top-level category; its
+/// spending also counts toward the parent's total. Only one level deep.
+///
 /// [senderIds] / [shopNames] are the pre-v6 rule format (a JSON sender list
 /// and a senderId -> comma-separated shop-fragment map). They are only read
 /// by the v6 migration, which turns them into [CategoryRules] rows.
@@ -57,6 +62,9 @@ class Categories extends Table {
   TextColumn get color => text().withDefault(const Constant('#3F6F63'))();
   TextColumn get senderIds => text().withDefault(const Constant('[]'))();
   TextColumn get shopNames => text().withDefault(const Constant('{}'))();
+
+  /// The top-level category this one sits under (null = top level).
+  IntColumn get parentId => integer().nullable()();
 }
 
 /// One auto-matching rule of a category, usually copied from an SMS the user
@@ -180,7 +188,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -214,6 +222,10 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(categoryRules);
             await m.createTable(categoryExclusions);
             await _migrateShopNames();
+          }
+          if (from < 7) {
+            // v7: subcategories.
+            await m.addColumn(categories, categories.parentId);
           }
         },
       );
@@ -334,7 +346,18 @@ class AppDatabase extends _$AppDatabase {
   Future<Category?> categoryById(int id) =>
       (select(categories)..where((c) => c.id.equals(id))).getSingleOrNull();
 
-  Future<int> deleteCategory(int id) async {
+  /// Deletes category [id] together with its subcategories. Their
+  /// transactions go back to Unknown.
+  Future<void> deleteCategory(int id) async {
+    final subs = await (select(categories)..where((c) => c.parentId.equals(id)))
+        .get();
+    for (final s in subs) {
+      await _deleteOneCategory(s.id);
+    }
+    await _deleteOneCategory(id);
+  }
+
+  Future<int> _deleteOneCategory(int id) async {
     // Un-file any transactions manually assigned to this category first.
     await (update(transactions)..where((t) => t.categoryId.equals(id)))
         .write(const TransactionsCompanion(categoryId: Value(null)));

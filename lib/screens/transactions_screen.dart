@@ -4,6 +4,7 @@ import '../database/database.dart';
 import '../format.dart';
 import '../main.dart';
 import '../services/category_matching.dart';
+import '../services/category_tree.dart';
 import '../services/pay_cycle.dart';
 import '../services/sms_import.dart';
 import '../theme.dart';
@@ -267,10 +268,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   ) {
     final id = resolver.categoryIdFor(t);
     if (id == null) return null;
-    for (final c in categories) {
-      if (c.id == id) return c;
-    }
-    return null;
+    final tree = CategoryTree(categories);
+    final c = tree.byId[id];
+    return c == null ? null : tree.withPathName(c);
   }
 }
 
@@ -625,6 +625,7 @@ class _ManualEntrySheetState extends State<_ManualEntrySheet> {
   bool _isCredit = false;
   DateTime _date = DateTime.now();
   int? _categoryId;
+  late final _tree = CategoryTree(widget.categories);
 
   @override
   void dispose() {
@@ -716,8 +717,11 @@ class _ManualEntrySheetState extends State<_ManualEntrySheet> {
                     decoration: _inputDecoration(),
                     items: [
                       const DropdownMenuItem(value: null, child: Text('None')),
-                      for (final c in widget.categories)
-                        DropdownMenuItem(value: c.id, child: Text(c.name)),
+                      for (final c in _tree.ordered)
+                        DropdownMenuItem(
+                          value: c.id,
+                          child: Text(_tree.pathName(c)),
+                        ),
                     ],
                     onChanged: (v) => setState(() => _categoryId = v),
                   ),
@@ -822,6 +826,8 @@ class _AssignCategorySheet extends StatelessWidget {
     final title = txn.description.isEmpty ? 'this transaction' : txn.description;
     final byName = hasReusableName(txn);
     final effective = resolver.categoryIdFor(txn);
+    final tree = CategoryTree(categories);
+    final ordered = tree.ordered;
     return _Sheet(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -850,9 +856,10 @@ class _AssignCategorySheet extends StatelessWidget {
                   )
                 : ListView.builder(
                     shrinkWrap: true,
-                    itemCount: categories.length,
+                    itemCount: ordered.length,
                     itemBuilder: (context, i) {
-                      final c = categories[i];
+                      final c = ordered[i];
+                      final isSub = tree.isSub(c);
                       final selected = effective == c.id;
                       return InkWell(
                         onTap: () async {
@@ -860,8 +867,8 @@ class _AssignCategorySheet extends StatelessWidget {
                           if (context.mounted) Navigator.pop(context);
                         },
                         child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 20, vertical: 14),
+                          padding: EdgeInsets.fromLTRB(
+                              isSub ? 42 : 20, 14, 20, 14),
                           decoration: const BoxDecoration(
                             border: Border(
                                 bottom:
