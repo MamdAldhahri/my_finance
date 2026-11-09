@@ -1663,6 +1663,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'over {amount}'**
   String overAmount(String amount);
+
+  /// No description provided for @deleteCategoryQ.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this category?'**
+  String get deleteCategoryQ;
+
+  /// No description provided for @deleteCategoryBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Its expenses will move to Unknown.'**
+  String get deleteCategoryBody;
 }
 
 class _AppLocalizationsDelegate

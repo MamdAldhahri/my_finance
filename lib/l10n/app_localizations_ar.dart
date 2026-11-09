@@ -1045,4 +1045,10 @@ class AppLocalizationsAr extends AppLocalizations {
   String overAmount(String amount) {
     return 'تجاوز $amount';
   }
+
+  @override
+  String get deleteCategoryQ => 'حذف هذه الفئة؟';
+
+  @override
+  String get deleteCategoryBody => 'ستنتقل مصاريفها إلى غير مصنّف.';
 }

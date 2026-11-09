@@ -523,6 +523,13 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
         _FlowHeader(
           title: _existing == null ? tr.newCategory : tr.editCategory,
           onBack: _cancel,
+          actions: [
+            IconButton(
+              tooltip: tr.save,
+              onPressed: _saveCategory,
+              icon: Icon(Icons.save_outlined, color: AppColors.green),
+            ),
+          ],
         ),
         const SizedBox(height: 18),
         Text(tr.categoryName,
@@ -537,29 +544,62 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
         ),
         ..._bucketPicker(),
         const SizedBox(height: 20),
-        Text(tr.matchingSms,
-            style: TextStyle(
-                fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.ink)),
-        const SizedBox(height: 4),
-        Text(
-          tr.matchingSmsHint,
-          style: TextStyle(fontSize: 12, color: AppColors.muted, height: 1.4),
+        Row(
+          children: [
+            Text(tr.matchingSms,
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink)),
+            const SizedBox(width: 4),
+            IconButton(
+              icon: Icon(Icons.error_outline, size: 18, color: AppColors.muted),
+              tooltip: tr.matchingSms,
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: Text(tr.matchingSms),
+                  content: Text(tr.matchingSmsHint,
+                      style: const TextStyle(height: 1.4)),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text(tr.close),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         if (_rules.isNotEmpty)
           AppCard(
             padding: EdgeInsets.zero,
-            child: Column(
-              children: [
-                for (var i = 0; i < _rules.length; i++)
-                  _RuleRow(
-                    rule: _rules[i],
-                    showDivider: i != _rules.length - 1,
-                    onToggleAmount: () => setState(
-                        () => _rules[i].matchAmount = !_rules[i].matchAmount),
-                    onDelete: () => _confirmDeleteRule(_rules[i]),
-                  ),
-              ],
+            child: _ScrollCap(
+              // Shows 3½ rows so it's clear the list scrolls.
+              maxHeight: _rules.length > 3
+                  ? _rules
+                          .take(3)
+                          .map((r) => r.canFixAmount ? 82.0 : 69.0)
+                          .reduce((a, b) => a + b) +
+                      (_rules[3].canFixAmount ? 82.0 : 69.0) / 2
+                  : null,
+              child: Column(
+                children: [
+                  for (var i = 0; i < _rules.length; i++)
+                    _RuleRow(
+                      rule: _rules[i],
+                      showDivider: i != _rules.length - 1,
+                      onToggleAmount: () => setState(() =>
+                          _rules[i].matchAmount = !_rules[i].matchAmount),
+                      onDelete: () => _confirmDeleteRule(_rules[i]),
+                    ),
+                ],
+              ),
             ),
           ),
         if (_rules.isNotEmpty) const SizedBox(height: 10),
@@ -610,12 +650,6 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
               ),
           ],
         ),
-        const SizedBox(height: 4),
-        Text(
-          tr.tapXToRemoveHint,
-          style: const TextStyle(
-              fontSize: 12, color: AppColors.muted, height: 1.4),
-        ),
         const SizedBox(height: 10),
         if (matched.isEmpty)
           EmptyHint(period == null
@@ -624,24 +658,28 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
         else
           AppCard(
             padding: EdgeInsets.zero,
-            child: Column(
-              children: [
-                for (var i = 0; i < matched.length && i < shown; i++)
-                  _TxPreviewRow(
-                    txn: matched[i],
-                    showDivider: i != matched.length - 1 && i != shown - 1,
-                    actionIcon: Icons.close,
-                    actionTooltip: tr.removeFromCategory,
-                    onAction: () => _confirmRemove(matched[i]),
-                  ),
-                if (matched.length > shown)
-                  Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Text(tr.andMore(matched.length - shown),
-                        style: const TextStyle(
-                            fontSize: 12, color: AppColors.faint)),
-                  ),
-              ],
+            child: _ScrollCap(
+              // Shows 3½ rows so it's clear the list scrolls.
+              maxHeight: matched.length > 3 ? 61.0 * 3.5 : null,
+              child: Column(
+                children: [
+                  for (var i = 0; i < matched.length && i < shown; i++)
+                    _TxPreviewRow(
+                      txn: matched[i],
+                      showDivider: i != matched.length - 1 && i != shown - 1,
+                      actionIcon: Icons.close,
+                      actionTooltip: tr.removeFromCategory,
+                      onAction: () => _confirmRemove(matched[i]),
+                    ),
+                  if (matched.length > shown)
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Text(tr.andMore(matched.length - shown),
+                          style: const TextStyle(
+                              fontSize: 12, color: AppColors.faint)),
+                    ),
+                ],
+              ),
             ),
           ),
         if (removed.isNotEmpty) ...[
@@ -669,10 +707,8 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
             ),
           ),
         ],
-        const SizedBox(height: 20),
-        _GreenButton(label: tr.save, onTap: _saveCategory),
         if (_existing != null) ...[
-          const SizedBox(height: 10),
+          const SizedBox(height: 20),
           TextButton(
             onPressed: _deleteCategory,
             child: Text(tr.deleteCategory,
@@ -685,21 +721,45 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
 
   /// "Bucket" chips: which of the four plan buckets the category is in.
   List<Widget> _bucketPicker() {
-    Widget chip(Bucket b) {
+    Widget chip(Bucket b, double maxWidth) {
       final selected = _bucket == b;
-      return ChoiceChip(
-        label: Text(b.label),
-        avatar: Dot(selected ? Colors.white : b.color, size: 8),
-        selected: selected,
-        showCheckmark: false,
-        onSelected: (_) => setState(() => _bucket = b),
-        backgroundColor: Colors.white,
-        selectedColor: AppColors.green,
-        side: const BorderSide(color: Color(0x261E2E2A)),
-        labelStyle: TextStyle(
-          fontSize: 12.5,
-          fontWeight: FontWeight.w600,
-          color: selected ? Colors.white : AppColors.ink,
+      final style = TextStyle(
+        fontSize: 11.5,
+        height: 1.15,
+        fontWeight: FontWeight.w600,
+        color: selected ? Colors.white : AppColors.ink,
+      );
+      // Room for text = pill width minus padding, dot and gap. On narrow
+      // phones shrink the font so no word breaks in the middle.
+      final textRoom = maxWidth - 9 * 2 - 7 - 5 - 2;
+      final fontSize = _fitWordsFontSize(context, b.label,
+          DefaultTextStyle.of(context).style.merge(style), textRoom);
+      return GestureDetector(
+        onTap: () => setState(() => _bucket = b),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+          decoration: BoxDecoration(
+            color: selected ? b.color : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+                color: selected ? b.color : const Color(0x261E2E2A)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Dot(selected ? Colors.white : b.color, size: 7),
+              const SizedBox(width: 5),
+              Flexible(
+                child: Text(
+                  b.label,
+                  maxLines: 2,
+                  softWrap: true,
+                  style: style.copyWith(fontSize: fontSize),
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -709,21 +769,111 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       Text(tr.bucket,
           style: TextStyle(fontSize: 12.5, color: AppColors.muted)),
       const SizedBox(height: 8),
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [for (final b in Bucket.values) chip(b)],
-      ),
+      // Smaller pie with one chip at each corner, beside its own slice:
+      // Investments top-left, Expenses top-right, Savings bottom-left,
+      // Extras bottom-right.
+      LayoutBuilder(builder: (context, box) {
+        const pie = _BucketPie.size;
+        const maxPill = 112.0;
+        const minPill = 96.0;
+        // d = distance from the pie's centre to every pill's inner edge
+        // (the edge facing the pie). Same d on the left and right, so the
+        // gap to the pie is equal on both sides whatever the pill widths.
+        // Pills sit just outside the pie's square so the lines show.
+        const wantD = pie / 2 + 6;
+        final blockW = math.min(box.maxWidth, 2 * (wantD + maxPill));
+        // Narrow phones: pull both sides in by the same amount.
+        final d = math.min(wantD, blockW / 2 - minPill)
+            .clamp(pie / 2 - 20, wantD)
+            .toDouble();
+        final side = blockW / 2 - d;
+        // Physical left/right (not start/end): the slices are drawn the
+        // same way in Arabic, so each pill must stay beside its own quarter.
+        Widget corner(Bucket b, {required bool left, required bool top}) =>
+            Positioned(
+              left: left ? 0 : null,
+              right: left ? null : 0,
+              top: top ? 0 : null,
+              bottom: top ? null : 0,
+              width: side,
+              child: Align(
+                alignment: Alignment(left ? 1 : -1, 0),
+                child: chip(b, side),
+              ),
+            );
+        return Center(
+          child: SizedBox(
+            width: blockW,
+            height: pie,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Center(
+                  child: _BucketPie(
+                    selected: _bucket,
+                    onSelected: (b) => setState(() => _bucket = b),
+                  ),
+                ),
+                // Leader lines from each slice to its pill.
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: CustomPaint(
+                      painter: _BucketLinksPainter(
+                          selected: _bucket, pillEdge: side),
+                    ),
+                  ),
+                ),
+                corner(Bucket.investments, left: true, top: true),
+                corner(Bucket.expenses, left: false, top: true),
+                corner(Bucket.savings, left: true, top: false),
+                corner(Bucket.extras, left: false, top: false),
+              ],
+            ),
+          ),
+        );
+      }),
       const SizedBox(height: 6),
       Text(_bucket.hint,
+          textAlign: TextAlign.center,
           style: const TextStyle(fontSize: 11.5, color: AppColors.faint)),
     ];
   }
 
-  /// Deletes the category being edited; its expenses move to Unknown.
+  /// Asks first, then deletes the category being edited; its expenses move
+  /// to Unknown.
   Future<void> _deleteCategory() async {
     final existing = _existing;
     if (existing == null) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: Text(tr.deleteCategoryQ,
+            style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppColors.ink)),
+        content: Text(
+          tr.deleteCategoryBody,
+          style: const TextStyle(fontSize: 14, color: AppColors.ink),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(tr.cancel,
+                style: TextStyle(color: AppColors.muted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(tr.delete,
+                style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.terracotta)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
     await db.deleteCategory(existing.id);
     _cancel();
   }
@@ -1738,10 +1888,15 @@ class _CategoryCard extends StatelessWidget {
 }
 
 class _FlowHeader extends StatelessWidget {
-  const _FlowHeader({required this.title, required this.onBack});
+  const _FlowHeader({
+    required this.title,
+    required this.onBack,
+    this.actions = const [],
+  });
 
   final String title;
   final VoidCallback onBack;
+  final List<Widget> actions;
 
   @override
   Widget build(BuildContext context) {
@@ -1767,6 +1922,7 @@ class _FlowHeader extends StatelessWidget {
                 color: AppColors.ink),
           ),
         ),
+        ...actions,
       ],
     );
   }
@@ -1900,6 +2056,227 @@ class EmptyHint extends StatelessWidget {
 }
 
 /// One rule in the editor: who it matches, and the "any amount" toggle.
+/// Donut picker for the four plan buckets: one quarter per bucket, in the
+/// bucket's colour. The chosen quarter pops out and its name shows in the
+/// middle; tapping a quarter picks it.
+class _BucketPie extends StatelessWidget {
+  const _BucketPie({required this.selected, required this.onSelected});
+
+  final Bucket selected;
+  final ValueChanged<Bucket> onSelected;
+
+  static const double size = 150;
+  static const double outer = 62;
+  static const double inner = 34;
+
+  static IconData iconFor(Bucket b) => switch (b) {
+        Bucket.expenses => Icons.shopping_cart_outlined,
+        Bucket.extras => Icons.celebration_outlined,
+        Bucket.savings => Icons.savings_outlined,
+        Bucket.investments => Icons.trending_up,
+      };
+
+  /// Middle angle of bucket [i]'s quarter, clockwise from 12 o'clock.
+  static double midAngle(int i) => -math.pi / 2 + math.pi / 4 + i * math.pi / 2;
+
+  void _onTap(TapUpDetails d) {
+    final o = d.localPosition - const Offset(size / 2, size / 2);
+    final dist = o.distance;
+    if (dist < inner - 4 || dist > size / 2) return;
+    var a = math.atan2(o.dy, o.dx) + math.pi / 2; // 0 at 12 o'clock
+    if (a < 0) a += 2 * math.pi;
+    final i = (a ~/ (math.pi / 2)).clamp(0, Bucket.values.length - 1);
+    onSelected(Bucket.values[i]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final buckets = Bucket.values;
+    return GestureDetector(
+      onTapUp: _onTap,
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: CustomPaint(
+                painter: _BucketPiePainter(selected: selected),
+              ),
+            ),
+            for (var i = 0; i < buckets.length; i++)
+              Builder(builder: (context) {
+                final b = buckets[i];
+                final pop = b == selected ? 4.0 : 0.0;
+                final r = (inner + outer) / 2 + pop;
+                final a = midAngle(i);
+                return Positioned(
+                  left: size / 2 + r * math.cos(a) - 9,
+                  top: size / 2 + r * math.sin(a) - 9,
+                  child: IgnorePointer(
+                    child: Icon(iconFor(b),
+                        size: 18,
+                        color: b == selected
+                            ? Colors.white
+                            : Color.lerp(b.color, Colors.black, 0.1)),
+                  ),
+                );
+              }),
+            Center(
+              child: IgnorePointer(
+                child: Container(
+                  width: inner * 2 - 8,
+                  height: inner * 2 - 8,
+                  padding: const EdgeInsets.all(5),
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                          color: Color(0x33000000),
+                          blurRadius: 8,
+                          offset: Offset(0, 2)),
+                    ],
+                  ),
+                  // Fixed title: the pills already name each bucket.
+                  child: LayoutBuilder(
+                    builder: (context, box) {
+                      final style = DefaultTextStyle.of(context).style.merge(
+                          const TextStyle(
+                              fontSize: 12.5,
+                              height: 1.2,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.ink));
+                      return Text(
+                        tr.income,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        style: style.copyWith(
+                            fontSize: _fitWordsFontSize(
+                                context, tr.income, style, box.maxWidth)),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BucketPiePainter extends CustomPainter {
+  _BucketPiePainter({required this.selected});
+
+  final Bucket selected;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = size.center(Offset.zero);
+    const gap = 0.035;
+    for (var i = 0; i < Bucket.values.length; i++) {
+      final b = Bucket.values[i];
+      final isSel = b == selected;
+      final start = -math.pi / 2 + i * math.pi / 2 + gap;
+      const sweep = math.pi / 2 - gap * 2;
+      final mid = _BucketPie.midAngle(i);
+      final shift = isSel
+          ? Offset(math.cos(mid), math.sin(mid)) * 4
+          : Offset.zero;
+      final center = c + shift;
+      final outer = isSel ? _BucketPie.outer + 4 : _BucketPie.outer;
+      const inner = _BucketPie.inner;
+      final path = Path()
+        ..arcTo(Rect.fromCircle(center: center, radius: outer), start, sweep,
+            true)
+        ..arcTo(Rect.fromCircle(center: center, radius: inner), start + sweep,
+            -sweep, false)
+        ..close();
+      final bounds = path.getBounds();
+
+      // Chosen: deep, rich colour. Others: the same colour, faded.
+      final base = isSel
+          ? Color.lerp(b.color, Colors.black, 0.18)!
+          : Color.lerp(b.color, Colors.white, 0.5)!;
+
+      canvas.drawShadow(path, Colors.black, isSel ? 6 : 2.5, false);
+      canvas.drawPath(path, Paint()..color = base);
+
+      // Glossy glass: bright top half, clear middle, slightly dark bottom.
+      canvas.drawPath(
+        path,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.white.withValues(alpha: isSel ? 0.5 : 0.4),
+              Colors.white.withValues(alpha: isSel ? 0.08 : 0.06),
+              Colors.white.withValues(alpha: 0),
+              Colors.black.withValues(alpha: isSel ? 0.2 : 0.1),
+            ],
+            stops: const [0.0, 0.45, 0.5, 1.0],
+          ).createShader(bounds),
+      );
+
+      // Bevel: a light rim on the edges.
+      canvas.drawPath(
+        path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = isSel ? 1.6 : 1.2
+          ..color = Colors.white.withValues(alpha: isSel ? 0.6 : 0.5),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_BucketPiePainter old) => old.selected != selected;
+}
+
+/// Caps [child] at [maxHeight] and lets it scroll inside; no cap when null.
+class _ScrollCap extends StatefulWidget {
+  const _ScrollCap({required this.maxHeight, required this.child});
+
+  final double? maxHeight;
+  final Widget child;
+
+  @override
+  State<_ScrollCap> createState() => _ScrollCapState();
+}
+
+class _ScrollCapState extends State<_ScrollCap> {
+  final _controller = ScrollController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final maxHeight = widget.maxHeight;
+    if (maxHeight == null) return widget.child;
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+          maxHeight: MediaQuery.textScalerOf(context).scale(maxHeight)),
+      child: Scrollbar(
+        controller: _controller,
+        thumbVisibility: true,
+        child: SingleChildScrollView(
+          controller: _controller,
+          primary: false,
+          child: widget.child,
+        ),
+      ),
+    );
+  }
+}
+
 class _RuleRow extends StatelessWidget {
   const _RuleRow({
     required this.rule,
@@ -2786,4 +3163,80 @@ class _YearArrow extends StatelessWidget {
           color: enabled ? AppColors.ink : AppColors.inactive, size: 20),
     );
   }
+}
+
+/// Font size for [text] in [style] so its longest word fits in [maxWidth]
+/// (text still wraps at spaces; words are never broken in the middle).
+double _fitWordsFontSize(
+    BuildContext context, String text, TextStyle style, double maxWidth) {
+  final base = style.fontSize ?? 14;
+  var widest = 0.0;
+  for (final w in text.split(' ')) {
+    final tp = TextPainter(
+      text: TextSpan(text: w, style: style),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    if (tp.width > widest) widest = tp.width;
+    tp.dispose();
+  }
+  if (widest <= maxWidth || widest == 0 || maxWidth <= 0) return base;
+  return base * maxWidth / widest * 0.98;
+}
+
+/// Elbow lines from the outer edge of each pie slice to its corner pill:
+/// up/down to the pill's middle, then across and under the pill.
+/// All four are drawn at once, each in its bucket's colour.
+class _BucketLinksPainter extends CustomPainter {
+  _BucketLinksPainter({required this.selected, required this.pillEdge});
+
+  final Bucket selected;
+
+  /// Distance from the block's left/right edge to the pills' inner edge.
+  final double pillEdge;
+
+  /// Pill middle, measured from the block's top/bottom edge.
+  static const double pillMid = 16;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = size.center(Offset.zero);
+    for (var i = 0; i < Bucket.values.length; i++) {
+      final b = Bucket.values[i];
+      final isSel = b == selected;
+      final a = _BucketPie.midAngle(i);
+      final dir = Offset(math.cos(a), math.sin(a));
+      // Selected slice is pushed out 4 and grows 4 (see _BucketPiePainter).
+      final r = _BucketPie.outer + (isSel ? 8 : 0);
+      final start = c + dir * r;
+      final left = dir.dx < 0;
+      final top = dir.dy < 0;
+      final y = top ? pillMid : size.height - pillMid;
+      // Run on under the pill (pills are opaque and drawn on top), so the
+      // line looks like it flows into the button.
+      const under = 24.0;
+      final x = left ? pillEdge - under : size.width - pillEdge + under;
+      // Every line in its bucket's colour; the chosen one a bit bolder.
+      final color = isSel
+          ? Color.lerp(b.color, Colors.black, 0.15)!
+          : b.color.withValues(alpha: 0.75);
+      final paint = Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = isSel ? 2 : 1.4
+        ..strokeJoin = StrokeJoin.round;
+      canvas.drawPath(
+        Path()
+          ..moveTo(start.dx, start.dy)
+          ..lineTo(start.dx, y)
+          ..lineTo(x, y),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_BucketLinksPainter old) =>
+      old.selected != selected || old.pillEdge != pillEdge;
 }

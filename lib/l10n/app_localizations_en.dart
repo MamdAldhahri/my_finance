@@ -1023,4 +1023,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String overAmount(String amount) {
     return 'over $amount';
   }
+
+  @override
+  String get deleteCategoryQ => 'Delete this category?';
+
+  @override
+  String get deleteCategoryBody => 'Its expenses will move to Unknown.';
 }

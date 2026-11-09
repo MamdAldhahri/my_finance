@@ -260,5 +260,7 @@
   "running": "جارية",
   "highest": "الأعلى",
   "savedAmount": "مدّخر {amount}",
-  "overAmount": "تجاوز {amount}"
+  "overAmount": "تجاوز {amount}",
+  "deleteCategoryQ": "حذف هذه الفئة؟",
+  "deleteCategoryBody": "ستنتقل مصاريفها إلى غير مصنّف."
 }

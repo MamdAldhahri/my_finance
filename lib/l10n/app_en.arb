@@ -831,5 +831,7 @@
         "type": "String"
       }
     }
-  }
+  },
+  "deleteCategoryQ": "Delete this category?",
+  "deleteCategoryBody": "Its expenses will move to Unknown."
 }
