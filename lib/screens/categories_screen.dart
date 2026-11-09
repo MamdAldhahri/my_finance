@@ -211,7 +211,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
         constraints: BoxConstraints(
           maxHeight: MediaQuery.of(context).size.height * 0.85,
         ),
-        child: const _CategorySmsPicker(),
+        child: _CategorySmsPicker(categoryId: _draftId),
       ),
     );
     if (picked == null || picked.isEmpty) return;
@@ -2478,9 +2478,14 @@ class _OutlineAction extends StatelessWidget {
 }
 
 /// Lets the user tick example bank SMS for a category, newest first. SMS
-/// already counted as a debt payment are left out (the debt owns them).
+/// already counted as a debt payment are left out (the debt owns them), and
+/// so are SMS already picked as examples for (or filed by hand into) another
+/// category, so the same SMS can't be picked twice.
 class _CategorySmsPicker extends StatefulWidget {
-  const _CategorySmsPicker();
+  const _CategorySmsPicker({required this.categoryId});
+
+  /// The category being edited ([_newCategoryId] for a new one).
+  final int categoryId;
 
   @override
   State<_CategorySmsPicker> createState() => _CategorySmsPickerState();
@@ -2497,11 +2502,31 @@ class _CategorySmsPickerState extends State<_CategorySmsPicker> {
     () async {
       final all = await db.allTransactions();
       final resolver = await CategoryResolver.load(db);
+      final categoryIds = {for (final c in await db.allCategories()) c.id};
+      // Example-SMS rules (exact name) that belong to other categories.
+      final otherExamples = (await db.allCategoryRules())
+          .where((r) =>
+              r.exact &&
+              r.categoryId != widget.categoryId &&
+              categoryIds.contains(r.categoryId))
+          .toList();
+      bool usedElsewhere(Transaction t) {
+        final manual = t.categoryId;
+        if (manual != null &&
+            manual != widget.categoryId &&
+            categoryIds.contains(manual)) {
+          return true;
+        }
+        return otherExamples.any((r) =>
+            !resolver.isExcluded(r.categoryId, t) && ruleMatches(r, t));
+      }
+
       if (!mounted) return;
       setState(() {
         _txns = all
             .where((t) => t.source == TxSource.sms)
             .where((t) => !resolver.isDebtPayment(t))
+            .where((t) => !usedElsewhere(t))
             .toList();
       });
     }();
